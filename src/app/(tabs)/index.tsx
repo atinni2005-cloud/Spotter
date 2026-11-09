@@ -1,0 +1,243 @@
+import { router } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { streamCoach } from '../../lib/api';
+import { supabase } from '../../lib/supabase';
+import { colors, radius, space } from '../../lib/theme';
+import { useAuth } from '../../providers/AuthProvider';
+
+type UiMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  planId?: string | null;
+  status?: string;
+  pending?: boolean;
+  error?: boolean;
+};
+
+const SUGGESTIONS = [
+  'Build my plan for this week',
+  "I'm wiped out today. What should I do?",
+  'How many sets per muscle should I do?',
+  'Swap squats for something easier on my knees',
+];
+
+export default function Coach() {
+  const { profile } = useAuth();
+  const [messages, setMessages] = useState<UiMessage[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    supabase
+      .from('chat_messages')
+      .select('id, role, content, plan_id')
+      .order('created_at', { ascending: false })
+      .limit(50)
+      .then(({ data }) => {
+        setMessages(
+          (data ?? []).map((m) => ({ id: m.id, role: m.role, content: m.content, planId: m.plan_id })),
+        );
+        setLoadingHistory(false);
+      });
+    return () => abortRef.current?.abort();
+  }, []);
+
+  const updateReply = useCallback((id: string, patch: (m: UiMessage) => Partial<UiMessage>) => {
+    setMessages((list) => list.map((m) => (m.id === id ? { ...m, ...patch(m) } : m)));
+  }, []);
+
+  async function send(text: string) {
+    const message = text.trim();
+    if (!message || sending) return;
+    setInput('');
+    setSending(true);
+
+    const replyId = `reply-${Date.now()}`;
+    // The list is inverted, so newest messages go first.
+    setMessages((list) => [
+      { id: replyId, role: 'assistant', content: '', pending: true },
+      { id: `user-${Date.now()}`, role: 'user', content: message },
+      ...list,
+    ]);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      await streamCoach(
+        message,
+        (event) => {
+          if (event.type === 'text') updateReply(replyId, (m) => ({ content: m.content + event.text, status: undefined }));
+          else if (event.type === 'status') updateReply(replyId, () => ({ status: event.text }));
+          else if (event.type === 'plan') updateReply(replyId, () => ({ planId: event.planId, status: undefined }));
+          else if (event.type === 'error') updateReply(replyId, (m) => ({ content: m.content || event.message, error: !m.content }));
+        },
+        controller.signal,
+      );
+    } catch (e) {
+      updateReply(replyId, (m) => ({
+        content: m.content || (e instanceof Error ? e.message : 'Something went wrong'),
+        error: !m.content,
+      }));
+    } finally {
+      updateReply(replyId, () => ({ pending: false, status: undefined }));
+      setSending(false);
+    }
+  }
+
+  const empty = !loadingHistory && messages.length === 0;
+
+  return (
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      {loadingHistory ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.accent} />
+        </View>
+      ) : empty ? (
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyTitle}>Hey{profile?.display_name ? ` ${profile.display_name}` : ''} 👋</Text>
+          <Text style={styles.emptyText}>
+            I'm your Spotter coach. Ask me anything about training, or let me build your week.
+          </Text>
+          <View style={{ gap: space.sm, marginTop: space.lg }}>
+            {SUGGESTIONS.map((s) => (
+              <Pressable key={s} style={styles.suggestion} onPress={() => send(s)}>
+                <Text style={styles.suggestionText}>{s}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : (
+        <FlatList
+          inverted
+          data={messages}
+          keyExtractor={(m) => m.id}
+          contentContainerStyle={{ padding: space.lg, gap: space.md }}
+          renderItem={({ item }) => <Bubble message={item} />}
+          keyboardShouldPersistTaps="handled"
+        />
+      )}
+
+      <View style={styles.composer}>
+        <TextInput
+          style={styles.input}
+          value={input}
+          onChangeText={setInput}
+          placeholder="Ask your coach…"
+          placeholderTextColor={colors.muted}
+          multiline
+          maxLength={4000}
+        />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Send"
+          onPress={() => send(input)}
+          disabled={sending || !input.trim()}
+          style={[styles.send, (sending || !input.trim()) && { opacity: 0.4 }]}
+        >
+          {sending ? <ActivityIndicator color={colors.accentText} /> : <Text style={styles.sendText}>↑</Text>}
+        </Pressable>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
+function Bubble({ message }: { message: UiMessage }) {
+  const mine = message.role === 'user';
+  return (
+    <View style={[styles.bubble, mine ? styles.mine : styles.theirs, message.error && { borderColor: colors.danger }]}>
+      {message.content ? (
+        <Text style={[styles.bubbleText, mine && { color: colors.accentText }]}>{message.content}</Text>
+      ) : null}
+      {message.pending && (message.status || !message.content) ? (
+        <View style={styles.statusRow}>
+          <ActivityIndicator size="small" color={colors.muted} />
+          {message.status ? <Text style={styles.status}>{message.status}</Text> : null}
+        </View>
+      ) : null}
+      {message.planId ? (
+        <Pressable style={styles.planLink} onPress={() => router.navigate('/plan')}>
+          <Text style={styles.planLinkText}>View your new plan →</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  emptyWrap: { flex: 1, padding: space.xl, justifyContent: 'center' },
+  emptyTitle: { color: colors.text, fontSize: 26, fontWeight: '800' },
+  emptyText: { color: colors.muted, fontSize: 16, lineHeight: 23, marginTop: space.sm },
+  suggestion: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    padding: space.md,
+  },
+  suggestionText: { color: colors.text, fontSize: 15 },
+  bubble: { maxWidth: '85%', borderRadius: radius.lg, padding: space.md, borderWidth: 1 },
+  mine: { alignSelf: 'flex-end', backgroundColor: colors.accent, borderColor: colors.accent },
+  theirs: { alignSelf: 'flex-start', backgroundColor: colors.card, borderColor: colors.border },
+  bubbleText: { color: colors.text, fontSize: 16, lineHeight: 22 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: 2 },
+  status: { color: colors.muted, fontSize: 14 },
+  planLink: {
+    marginTop: space.sm,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.md,
+    backgroundColor: colors.cardAlt,
+    borderRadius: radius.sm,
+    alignSelf: 'flex-start',
+  },
+  planLinkText: { color: colors.accent, fontWeight: '700' },
+  composer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: space.sm,
+    padding: space.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.bg,
+  },
+  input: {
+    flex: 1,
+    maxHeight: 120,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    color: colors.text,
+    fontSize: 16,
+    paddingHorizontal: space.md,
+    paddingTop: space.md,
+    paddingBottom: space.md,
+  },
+  send: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendText: { color: colors.accentText, fontSize: 22, fontWeight: '900' },
+});

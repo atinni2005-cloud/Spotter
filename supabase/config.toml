@@ -1,0 +1,11 @@
+# Minimal Supabase CLI config for Spotter.
+project_id = "spotter"
+
+# The functions check the user's session themselves (see _shared/supabase.ts),
+# so the gateway's JWT check is turned off. This also works with Supabase's
+# newer publishable keys.
+[functions.coach]
+verify_jwt = false
+
+[functions.generate-plan]
+verify_jwt = false

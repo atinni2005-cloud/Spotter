@@ -94,9 +94,12 @@ export default function Eat() {
           </Text>
         </View>
         {!targets ? (
-          <Text style={styles.muted}>
-            Add your height and weight and Spotter works out your daily calories and protein from your goal.
-          </Text>
+          <>
+            <Text style={styles.muted}>
+              Add your height and weight and Spotter works out your daily calories and protein from your goal.
+            </Text>
+            <Button title="Add height & weight" onPress={() => router.push('/nutrition-settings')} />
+          </>
         ) : (
           <Text style={styles.muted}>
             {reminder

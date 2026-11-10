@@ -99,15 +99,32 @@ export function analyzeMeal(input: { imageBase64?: string; description?: string 
   return post('nutrition', { action: 'analyze', image_base64: input.imageBase64, description: input.description });
 }
 
+export type MealIdea = {
+  title: string;
+  description: string;
+  calories: number;
+  protein_g: number;
+  ingredients: { name: string; amount: string }[];
+};
+
 export type MealSuggestion = {
   remaining: { calories: number | null; protein_g: number | null };
   met: boolean;
-  suggestion: { title: string; description: string; calories: number; protein_g: number } | null;
+  suggestion: MealIdea | null;
 };
 
 /** A meal idea that fills today's gap to the user's targets (null when targets are met). */
 export function suggestMeal(): Promise<MealSuggestion> {
   return post('nutrition', { action: 'suggest' });
+}
+
+/** Swap the ingredients the user doesn't have for equivalents with similar macros. */
+export function swapMealIngredients(
+  meal: MealIdea,
+  missing: string[],
+  note?: string,
+): Promise<{ suggestion: MealIdea; swaps: { from: string; to: string }[] }> {
+  return post('nutrition', { action: 'swap', meal, missing, note: note ?? '' });
 }
 
 /** Start the background form review. Returns the form check id to watch. */

@@ -7,7 +7,13 @@
 //
 // POST { "action": "suggest" }
 //   Suggests one meal that fills the gap between what the user ate today and their targets.
-//   Response: { remaining: {calories, protein_g}, met: boolean, suggestion: {title, description, calories, protein_g} | null }
+//   Response: { remaining: {calories, protein_g}, met: boolean,
+//               suggestion: {title, description, calories, protein_g, ingredients: [{name, amount}]} | null }
+//
+// POST { "action": "swap", "meal": <suggestion>, "missing": ["Greek yogurt", ...], "note"?: "..." }
+//   Replaces the ingredients the user doesn't have with equivalents that keep
+//   the meal close to the same calories and protein.
+//   Response: { suggestion: <same shape>, swaps: [{from, to}] }
 
 import type Anthropic from "npm:@anthropic-ai/sdk@1";
 import { anthropic, FALLBACK, MODEL } from "../_shared/claude.ts";
@@ -45,17 +51,64 @@ const estimateSchema = {
   },
 };
 
+const ingredientSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["name", "amount"],
+  properties: {
+    name: { type: "string", description: "Plain ingredient name, e.g. 'Greek yogurt'" },
+    amount: { type: "string", description: "Rough amount, e.g. '200 g' or '1 scoop'" },
+  },
+};
+
+const suggestionProperties = {
+  title: { type: "string", description: "Short meal name, max 40 characters" },
+  description: { type: "string", description: "One sentence: how to put it together" },
+  calories: { type: "number" },
+  protein_g: { type: "number" },
+  ingredients: { type: "array", items: ingredientSchema, description: "Every ingredient, 2 to 8 items" },
+};
+
 const suggestionSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["title", "description", "calories", "protein_g"],
+  required: ["title", "description", "calories", "protein_g", "ingredients"],
+  properties: suggestionProperties,
+};
+
+const swapSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["meal", "swaps"],
   properties: {
-    title: { type: "string", description: "Short meal name, max 40 characters" },
-    description: { type: "string", description: "One sentence: what to eat and roughly how much" },
-    calories: { type: "number" },
-    protein_g: { type: "number" },
+    meal: suggestionSchema,
+    swaps: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["from", "to"],
+        properties: {
+          from: { type: "string", description: "The missing ingredient" },
+          to: { type: "string", description: "What replaces it, with amount, or 'left out'" },
+        },
+      },
+    },
   },
 };
+
+type Ingredient = { name: string; amount: string };
+type Suggestion = { title: string; description: string; calories: number; protein_g: number; ingredients: Ingredient[] };
+
+function cleanSuggestion(s: Suggestion): Suggestion {
+  return {
+    title: String(s.title ?? "Meal").slice(0, 80),
+    description: String(s.description ?? ""),
+    calories: Math.round(Number(s.calories) || 0),
+    protein_g: Math.round(Number(s.protein_g) || 0),
+    ingredients: (s.ingredients ?? []).slice(0, 10).map((i) => ({ name: String(i.name), amount: String(i.amount ?? "") })),
+  };
+}
 
 async function structured<T>(
   system: string,
@@ -143,7 +196,7 @@ async function suggest(profile: Profile, supabase: Parameters<typeof loadTodayNu
     (remaining.protein_g === null || remaining.protein_g <= PROTEIN_SLACK);
   if (met) return json({ remaining, met: true, suggestion: null });
 
-  const suggestion = await structured<{ title: string; description: string; calories: number; protein_g: number }>(
+  const suggestion = await structured<Suggestion>(
     [
       "You are a sports nutritionist. Suggest ONE simple meal or snack the user can make or buy this evening that closes the gap to their daily targets.",
       "Prioritise hitting protein. Stay at or under the remaining calories. Use everyday foods, give rough amounts, and keep it realistic for one sitting (max about 70 g protein).",
@@ -160,12 +213,46 @@ async function suggest(profile: Profile, supabase: Parameters<typeof loadTodayNu
   return json({
     remaining,
     met: false,
-    suggestion: {
-      title: suggestion.title,
-      description: suggestion.description,
-      calories: Math.round(suggestion.calories),
-      protein_g: Math.round(suggestion.protein_g),
-    },
+    suggestion: cleanSuggestion(suggestion),
+  });
+}
+
+async function swap(body: Record<string, unknown>) {
+  // deno-lint-ignore no-explicit-any
+  const meal = body.meal as any;
+  const missing = (Array.isArray(body.missing) ? body.missing : [])
+    .filter((m): m is string => typeof m === "string" && m.trim().length > 0)
+    .map((m) => m.trim().slice(0, 80))
+    .slice(0, 10);
+  const note = typeof body.note === "string" ? body.note.trim().slice(0, 300) : "";
+  if (!meal || typeof meal.title !== "string" || !Array.isArray(meal.ingredients)) {
+    return json({ error: "No meal to change" }, 400);
+  }
+  if (!missing.length && !note) return json({ error: "Tap the ingredients you don't have" }, 400);
+  const current = cleanSuggestion(meal as Suggestion);
+
+  const result = await structured<{ meal: Suggestion; swaps: { from: string; to: string }[] }>(
+    [
+      "You are a sports nutritionist adjusting a meal because the user is missing some ingredients.",
+      "Replace each missing ingredient with a common, easy-to-find equivalent that plays the same role (protein source for protein source, carb for carb), adjusting amounts so the meal stays within about 10% of the original calories and protein.",
+      "Keep every ingredient the user has. Never re-add a missing ingredient. If an ingredient is minor (a garnish or spice), you may simply leave it out.",
+      "Update the title, description, calories and protein to match the new meal, and list each swap.",
+    ].join("\n"),
+    [
+      {
+        type: "text",
+        text: [
+          `<meal>${JSON.stringify(current)}</meal>`,
+          missing.length ? `Missing: ${missing.join(", ")}` : "",
+          note ? `The user adds: ${note}` : "",
+        ].filter(Boolean).join("\n"),
+      },
+    ],
+    swapSchema,
+  );
+  return json({
+    suggestion: cleanSuggestion(result.meal),
+    swaps: (result.swaps ?? []).map((x) => ({ from: String(x.from), to: String(x.to) })),
   });
 }
 
@@ -185,6 +272,7 @@ Deno.serve(async (req) => {
 
   try {
     if (body.action === "analyze") return await analyze(body);
+    if (body.action === "swap") return await swap(body);
     if (body.action === "suggest") {
       const profile = await loadProfile(ctx.supabase, ctx.user.id);
       return await suggest(profile, ctx.supabase);

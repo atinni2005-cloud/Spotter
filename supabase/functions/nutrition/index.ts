@@ -8,12 +8,15 @@
 // POST { "action": "suggest" }
 //   Suggests one meal that fills the gap between what the user ate today and their targets.
 //   Response: { remaining: {calories, protein_g}, over: {calories, protein_g, carbs_g, fat_g}, met: boolean,
-//               suggestion: {title, description, calories, protein_g, ingredients: [{name, amount}]} | null }
+//               suggestion: <recipe> | null }
+//   <recipe> = { title, description, calories, protein_g, carbs_g, fat_g, prep_minutes, cook_minutes,
+//                servings, ingredients: [{name, amount}], steps: ["..."] }
 //
 // POST { "action": "swap", "meal": <suggestion>, "missing": ["Greek yogurt", ...], "note"?: "..." }
 //   Replaces the ingredients the user doesn't have with equivalents that keep
 //   the meal close to the same calories and protein.
-//   Response: { suggestion: <same shape>, swaps: [{from, to}] }
+//   The recipe's amounts, steps, times and macros are updated to match.
+//   Response: { suggestion: <recipe>, swaps: [{from, to}] }
 
 import type Anthropic from "npm:@anthropic-ai/sdk@1";
 import { anthropic, FALLBACK, MODEL } from "../_shared/claude.ts";
@@ -57,22 +60,35 @@ const ingredientSchema = {
   required: ["name", "amount"],
   properties: {
     name: { type: "string", description: "Plain ingredient name, e.g. 'Greek yogurt'" },
-    amount: { type: "string", description: "Rough amount, e.g. '200 g' or '1 scoop'" },
+    amount: {
+      type: "string",
+      description: "Exact amount for the recipe, in grams or ml where it makes sense, e.g. '200 g', '1 tbsp (15 ml)', '2 large eggs'",
+    },
   },
 };
 
 const suggestionProperties = {
-  title: { type: "string", description: "Short meal name, max 40 characters" },
-  description: { type: "string", description: "One sentence: how to put it together" },
-  calories: { type: "number" },
+  title: { type: "string", description: "Short recipe name, max 40 characters" },
+  description: { type: "string", description: "One sentence on what it is and why it fits today" },
+  calories: { type: "number", description: "Total for the whole recipe" },
   protein_g: { type: "number" },
-  ingredients: { type: "array", items: ingredientSchema, description: "Every ingredient, 2 to 8 items" },
+  carbs_g: { type: "number" },
+  fat_g: { type: "number" },
+  prep_minutes: { type: "integer", description: "Hands-on prep time in minutes" },
+  cook_minutes: { type: "integer", description: "Cooking time in minutes, 0 if no cooking" },
+  servings: { type: "integer", description: "Usually 1" },
+  ingredients: { type: "array", items: ingredientSchema, description: "Every ingredient incl. oil and seasoning, 2 to 12 items" },
+  steps: {
+    type: "array",
+    items: { type: "string" },
+    description: "Numbered cooking steps in order, 2 to 8, each one short sentence or two with times and heat where relevant. No step numbers in the text.",
+  },
 };
 
 const suggestionSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["title", "description", "calories", "protein_g", "ingredients"],
+  required: Object.keys(suggestionProperties),
   properties: suggestionProperties,
 };
 
@@ -98,15 +114,40 @@ const swapSchema = {
 };
 
 type Ingredient = { name: string; amount: string };
-type Suggestion = { title: string; description: string; calories: number; protein_g: number; ingredients: Ingredient[] };
+type Suggestion = {
+  title: string;
+  description: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  prep_minutes: number;
+  cook_minutes: number;
+  servings: number;
+  ingredients: Ingredient[];
+  steps: string[];
+};
 
-function cleanSuggestion(s: Suggestion): Suggestion {
+const whole = (n: unknown, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(Number(n) || 0)));
+
+function cleanSuggestion(s: Partial<Suggestion>): Suggestion {
   return {
     title: String(s.title ?? "Meal").slice(0, 80),
     description: String(s.description ?? ""),
-    calories: Math.round(Number(s.calories) || 0),
-    protein_g: Math.round(Number(s.protein_g) || 0),
-    ingredients: (s.ingredients ?? []).slice(0, 10).map((i) => ({ name: String(i.name), amount: String(i.amount ?? "") })),
+    calories: whole(s.calories, 0, 5000),
+    protein_g: whole(s.protein_g, 0, 500),
+    carbs_g: whole(s.carbs_g, 0, 1000),
+    fat_g: whole(s.fat_g, 0, 500),
+    prep_minutes: whole(s.prep_minutes, 0, 600),
+    cook_minutes: whole(s.cook_minutes, 0, 600),
+    servings: whole(s.servings ?? 1, 1, 20),
+    ingredients: (Array.isArray(s.ingredients) ? s.ingredients : [])
+      .slice(0, 14)
+      .map((i) => ({ name: String(i.name), amount: String(i.amount ?? "") })),
+    steps: (Array.isArray(s.steps) ? s.steps : [])
+      .map((x) => String(x).trim().replace(/^\d+[.)]\s*/, ""))
+      .filter(Boolean)
+      .slice(0, 12),
   };
 }
 
@@ -204,8 +245,9 @@ async function suggest(profile: Profile, supabase: Parameters<typeof loadTodayNu
 
   const suggestion = await structured<Suggestion>(
     [
-      "You are a sports nutritionist. Suggest ONE simple meal or snack the user can make or buy this evening that closes the gap to their daily targets.",
-      "Prioritise hitting protein. Stay at or under the remaining calories; if they are already at or over their calories, suggest a very light, lean, high-protein option. Use everyday foods, give rough amounts, and keep it realistic for one sitting (max about 70 g protein).",
+      "You are a sports nutritionist and home cook. Give ONE simple recipe for a meal or snack the user can make this evening that closes the gap to their daily targets.",
+      "Prioritise hitting protein. Stay at or under the remaining calories; if they are already at or over their calories, suggest a very light, lean, high-protein option. Use everyday supermarket foods and keep it realistic for one sitting (max about 70 g protein).",
+      "Write it as a full recipe for one serving: exact ingredient amounts (grams or ml where sensible, including cooking oil), short step-by-step instructions with times and heat, prep and cook time, and macros (calories, protein, carbs, fat) that add up from the ingredient amounts. Keep the total time under about 30 minutes unless no cooking is needed.",
       `The user's goal is to ${profile.goal ? GOAL_LABEL[profile.goal] : "stay fit"}.`,
     ].join("\n"),
     [
@@ -243,7 +285,7 @@ async function swap(body: Record<string, unknown>) {
       "You are a sports nutritionist adjusting a meal because the user is missing some ingredients.",
       "Replace each missing ingredient with a common, easy-to-find equivalent that plays the same role (protein source for protein source, carb for carb), adjusting amounts so the meal stays within about 10% of the original calories and protein.",
       "Keep every ingredient the user has. Never re-add a missing ingredient. If an ingredient is minor (a garnish or spice), you may simply leave it out.",
-      "Update the title, description, calories and protein to match the new meal, and list each swap.",
+      "Update the title, description, ingredient amounts, cooking steps, prep and cook time, and macros (calories, protein, carbs, fat) to match the new recipe, and list each swap.",
     ].join("\n"),
     [
       {

@@ -99,12 +99,19 @@ export function analyzeMeal(input: { imageBase64?: string; description?: string 
   return post('nutrition', { action: 'analyze', image_base64: input.imageBase64, description: input.description });
 }
 
+/** A full recipe: a meal idea from the coach, or one the user saved. */
 export type MealIdea = {
   title: string;
   description: string;
   calories: number;
   protein_g: number;
+  carbs_g?: number;
+  fat_g?: number;
+  prep_minutes?: number;
+  cook_minutes?: number;
+  servings?: number;
   ingredients: { name: string; amount: string }[];
+  steps?: string[];
 };
 
 export type MealSuggestion = {
@@ -127,6 +134,16 @@ export function swapMealIngredients(
   note?: string,
 ): Promise<{ suggestion: MealIdea; swaps: { from: string; to: string }[] }> {
   return post('nutrition', { action: 'swap', meal, missing, note: note ?? '' });
+}
+
+export type SwapOption = { name: string; equipment: string; reps: string; why: string; notes: string };
+
+/** Equivalent exercises (same muscles and movement, different equipment) for one whose machine is taken. */
+export function swapExercise(
+  exerciseId: string,
+  options?: { note?: string; avoid?: string[] },
+): Promise<{ options: SwapOption[] }> {
+  return post('swap-exercise', { exercise_id: exerciseId, note: options?.note ?? '', avoid: options?.avoid ?? [] });
 }
 
 /** Start the background form review. Returns the form check id to watch. */

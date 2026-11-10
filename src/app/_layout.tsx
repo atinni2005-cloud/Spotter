@@ -45,6 +45,8 @@ function RootNavigator() {
         <Stack.Screen name="form-check/new" options={{ title: 'Form check' }} />
         <Stack.Screen name="form-check/[id]" options={{ title: 'Form feedback' }} />
         <Stack.Screen name="form-checks" options={{ title: 'Form checks' }} />
+        <Stack.Screen name="recipes" options={{ title: 'Saved recipes' }} />
+        <Stack.Screen name="recipe/[id]" options={{ title: 'Recipe' }} />
       </Stack.Protected>
     </Stack>
   );

@@ -1,9 +1,11 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Button, Card, ErrorText, Input, ProgressBar } from '../../components/ui';
-import { type MealSuggestion, suggestMeal, swapMealIngredients } from '../../lib/api';
+import { RecipeView } from '../../components/RecipeView';
+import { Button, Card, ErrorText, ProgressBar } from '../../components/ui';
+import { type MealIdea, type MealSuggestion, suggestMeal } from '../../lib/api';
 import { formatTime, overTargets, profileTargets, startOfTodayIso, sumMeals } from '../../lib/nutrition';
+import { logRecipeAsMeal, saveRecipe } from '../../lib/recipes';
 import { refreshMealReminders } from '../../lib/reminders';
 import { supabase } from '../../lib/supabase';
 import { colors, space } from '../../lib/theme';
@@ -16,10 +18,11 @@ export default function Eat() {
   const [error, setError] = useState<string | null>(null);
   const [idea, setIdea] = useState<MealSuggestion | null>(null);
   const [loadingIdea, setLoadingIdea] = useState(false);
-  const [missing, setMissing] = useState<string[]>([]);
-  const [swapNote, setSwapNote] = useState('');
-  const [swaps, setSwaps] = useState<{ from: string; to: string }[]>([]);
-  const [swapping, setSwapping] = useState(false);
+  const [ideaVersion, setIdeaVersion] = useState(0);
+  const [savedIdea, setSavedIdea] = useState<MealIdea | null>(null);
+  const [savingIdea, setSavingIdea] = useState(false);
+  const [loggingIdea, setLoggingIdea] = useState(false);
+  const [savedCount, setSavedCount] = useState<number | null>(null);
 
   const targets = profileTargets(profile);
   const totals = sumMeals(meals);
@@ -35,6 +38,8 @@ export default function Eat() {
     const rows = (data as MealLog[]) ?? [];
     setMeals(rows);
     refreshMealReminders(profile, sumMeals(rows));
+    const { count } = await supabase.from('saved_recipes').select('id', { count: 'exact', head: true });
+    setSavedCount(count ?? null);
   }, [profile]);
 
   useFocusEffect(
@@ -48,9 +53,8 @@ export default function Eat() {
     setError(null);
     try {
       setIdea(await suggestMeal());
-      setMissing([]);
-      setSwaps([]);
-      setSwapNote('');
+      setIdeaVersion((v) => v + 1);
+      setSavedIdea(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not get a meal idea');
     } finally {
@@ -58,23 +62,33 @@ export default function Eat() {
     }
   }
 
-  const toggleMissing = (name: string) =>
-    setMissing((m) => (m.includes(name) ? m.filter((x) => x !== name) : [...m, name]));
-
-  async function swapMissing() {
+  async function saveIdea() {
     if (!idea?.suggestion) return;
-    setSwapping(true);
+    setSavingIdea(true);
     setError(null);
     try {
-      const result = await swapMealIngredients(idea.suggestion, missing, swapNote);
-      setIdea({ ...idea, suggestion: result.suggestion });
-      setSwaps(result.swaps);
-      setMissing([]);
-      setSwapNote('');
+      await saveRecipe(idea.suggestion);
+      setSavedIdea(idea.suggestion);
+      setSavedCount((c) => (c ?? 0) + 1);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not swap ingredients');
+      setError(e instanceof Error ? e.message : 'Could not save the recipe');
     } finally {
-      setSwapping(false);
+      setSavingIdea(false);
+    }
+  }
+
+  async function logIdea() {
+    if (!idea?.suggestion) return;
+    setLoggingIdea(true);
+    setError(null);
+    try {
+      await logRecipeAsMeal(idea.suggestion);
+      setIdea(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not log the meal');
+    } finally {
+      setLoggingIdea(false);
     }
   }
 
@@ -161,66 +175,37 @@ export default function Eat() {
 
       {targets ? (
         <Card style={{ gap: space.sm }}>
-          <Text style={styles.cardLabel}>MEAL IDEA</Text>
+          <View style={styles.headerRow}>
+            <Text style={styles.cardLabel}>MEAL IDEA</Text>
+            <Pressable onPress={() => router.push('/recipes')} hitSlop={8}>
+              <Text style={styles.link}>Saved recipes{savedCount ? ` (${savedCount})` : ''}</Text>
+            </Pressable>
+          </View>
           {idea?.met ? (
             <Text style={styles.text}>You've hit your targets for today. Nice work.</Text>
           ) : idea?.suggestion ? (
             <>
-              <Text style={styles.ideaTitle}>{idea.suggestion.title}</Text>
-              <Text style={styles.muted}>
-                About {idea.suggestion.protein_g} g protein · {idea.suggestion.calories} kcal
-              </Text>
-              <Text style={styles.text}>{idea.suggestion.description}</Text>
-              {idea.suggestion.ingredients?.length ? (
-                <>
-                  <Text style={[styles.muted, { marginTop: space.xs }]}>Tap anything you don't have:</Text>
-                  <View style={styles.chips}>
-                    {idea.suggestion.ingredients.map((ing) => {
-                      const off = missing.includes(ing.name);
-                      return (
-                        <Pressable
-                          key={ing.name}
-                          onPress={() => toggleMissing(ing.name)}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: off }}
-                          style={[styles.ingredient, off && styles.ingredientOff]}
-                        >
-                          <Text style={[styles.ingredientText, off && styles.ingredientTextOff]}>
-                            {ing.amount ? `${ing.amount} ` : ''}
-                            {ing.name}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                  {missing.length ? (
-                    <>
-                      <Input
-                        value={swapNote}
-                        onChangeText={setSwapNote}
-                        placeholder='Optional: what you do have, e.g. "I have tuna and rice"'
-                      />
-                      <Button
-                        title={`Swap ${missing.length === 1 ? 'it' : `these ${missing.length}`}`}
-                        onPress={swapMissing}
-                        loading={swapping}
-                      />
-                    </>
-                  ) : null}
-                  {swaps.length ? (
-                    <View style={{ gap: 2 }}>
-                      {swaps.map((x, i) => (
-                        <Text key={i} style={styles.swap}>
-                          ↺ {x.from} → {x.to}
-                        </Text>
-                      ))}
-                    </View>
-                  ) : null}
-                </>
-              ) : null}
+              <RecipeView
+                key={ideaVersion}
+                recipe={idea.suggestion}
+                onChange={(recipe) => setIdea({ ...idea, suggestion: recipe })}
+              />
+              <View style={styles.row}>
+                <Button
+                  title={savedIdea === idea.suggestion ? 'Saved ♥' : '♡ Save recipe'}
+                  variant="secondary"
+                  onPress={saveIdea}
+                  loading={savingIdea}
+                  disabled={savedIdea === idea.suggestion}
+                  style={{ flex: 1 }}
+                />
+                <Button title="I ate this" variant="secondary" onPress={logIdea} loading={loggingIdea} style={{ flex: 1 }} />
+              </View>
             </>
           ) : (
-            <Text style={styles.muted}>Get a meal that fills what you have left today.</Text>
+            <Text style={styles.muted}>
+              Get a recipe that fills what you have left today, with amounts, steps and macros.
+            </Text>
           )}
           <Button
             title={idea ? 'Another idea' : 'Suggest a meal'}
@@ -229,6 +214,8 @@ export default function Eat() {
             loading={loadingIdea}
           />
         </Card>
+      ) : savedCount ? (
+        <Button title={`♥ Saved recipes (${savedCount})`} variant="secondary" onPress={() => router.push('/recipes')} />
       ) : null}
 
       <Text style={styles.section}>Logged today</Text>
@@ -267,21 +254,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: space.sm },
   muted: { color: colors.muted, fontSize: 15, lineHeight: 21 },
   text: { color: colors.text, fontSize: 15, lineHeight: 21 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  ingredient: {
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.cardAlt,
-  },
-  ingredientOff: { borderColor: colors.danger, backgroundColor: 'transparent' },
-  ingredientText: { color: colors.text, fontSize: 14 },
-  ingredientTextOff: { color: colors.danger, textDecorationLine: 'line-through' },
-  swap: { color: colors.accent, fontSize: 14, lineHeight: 20 },
   overLine: { color: colors.text, fontSize: 16, fontWeight: '800' },
-  ideaTitle: { color: colors.text, fontSize: 18, fontWeight: '800' },
   section: { color: colors.text, fontSize: 20, fontWeight: '800', marginTop: space.sm },
   mealName: { color: colors.text, fontSize: 17, fontWeight: '700', flex: 1 },
   hint: { color: colors.muted, fontSize: 13, textAlign: 'center' },

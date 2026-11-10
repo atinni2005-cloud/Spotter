@@ -51,6 +51,22 @@ export type MealLog = {
   source: 'photo' | 'text' | 'manual';
 };
 
+export type SavedRecipe = {
+  id: string;
+  title: string;
+  description: string | null;
+  calories: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+  prep_minutes: number | null;
+  cook_minutes: number | null;
+  servings: number;
+  ingredients: { name: string; amount: string }[];
+  steps: string[];
+  created_at: string;
+};
+
 export type SetLog = {
   id: string;
   session_id: string;
@@ -93,6 +109,8 @@ export type PlanExercise = {
   rest_seconds: number | null;
   target_rpe: number | null;
   notes: string | null;
+  /** Set when the user swapped this exercise because the machine was taken. */
+  swapped_from?: { name: string; equipment: string | null; reps: string; notes: string | null } | null;
 };
 
 export type PlanDay = {

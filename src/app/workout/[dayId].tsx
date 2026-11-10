@@ -1,7 +1,8 @@
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, ErrorText, Input, Screen } from '../../components/ui';
+import { type SwapOption, swapExercise } from '../../lib/api';
 import { startOfTodayIso } from '../../lib/nutrition';
 import { supabase } from '../../lib/supabase';
 import { colors, radius, space } from '../../lib/theme';
@@ -10,6 +11,16 @@ import { describeSets, lightenedSets, overloadAdvice } from '../../lib/workout';
 import { useAuth } from '../../providers/AuthProvider';
 
 type Draft = { weight: string; reps: string };
+
+type SwapState = {
+  exerciseId: string;
+  loading: boolean;
+  options: SwapOption[];
+  offered: string[];
+  note: string;
+  applying: string | null;
+  error: string | null;
+};
 
 export default function Workout() {
   const { dayId } = useLocalSearchParams<{ dayId: string }>();
@@ -26,13 +37,14 @@ export default function Workout() {
   const [extraSets, setExtraSets] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [swap, setSwap] = useState<SwapState | null>(null);
 
   const load = useCallback(async () => {
     const since = new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString();
     const [dayRes, energyRes, sessionRes] = await Promise.all([
       supabase
         .from('plan_days')
-        .select('id, plan_id, day_index, title, focus, is_rest, notes, plan_exercises(id, day_id, position, name, equipment, sets, reps, rest_seconds, target_rpe, notes)')
+        .select('id, plan_id, day_index, title, focus, is_rest, notes, plan_exercises(id, day_id, position, name, equipment, sets, reps, rest_seconds, target_rpe, notes, swapped_from)')
         .eq('id', dayId)
         .single(),
       supabase
@@ -132,6 +144,73 @@ export default function Workout() {
     }
   }
 
+  /** The machine is taken: ask the coach for equivalent exercises on other equipment. */
+  async function findSwaps(ex: PlanExercise, more = false) {
+    const prev = more && swap?.exerciseId === ex.id ? swap : null;
+    const offered = prev ? [...prev.offered, ...prev.options.map((o) => o.name)] : [];
+    const note = prev?.note ?? '';
+    setSwap({ exerciseId: ex.id, loading: true, options: [], offered, note, applying: null, error: null });
+    try {
+      const { options } = await swapExercise(ex.id, { note, avoid: offered });
+      setSwap((s) => (s?.exerciseId === ex.id ? { ...s, loading: false, options } : s));
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Could not find a swap';
+      setSwap((s) => (s?.exerciseId === ex.id ? { ...s, loading: false, error: message } : s));
+    }
+  }
+
+  async function applySwap(ex: PlanExercise, option: SwapOption) {
+    setSwap((s) => (s ? { ...s, applying: option.name, error: null } : s));
+    // Keep the very first exercise as the original, so "Switch back" always returns to the plan.
+    const original = ex.swapped_from ?? { name: ex.name, equipment: ex.equipment, reps: ex.reps, notes: ex.notes };
+    const { error: err } = await supabase
+      .from('plan_exercises')
+      .update({
+        name: option.name,
+        equipment: option.equipment || null,
+        reps: option.reps || ex.reps,
+        notes: option.notes || null,
+        swapped_from: original,
+      })
+      .eq('id', ex.id);
+    if (err) {
+      setSwap((s) => (s ? { ...s, applying: null, error: err.message } : s));
+      return;
+    }
+    setSwap(null);
+    await load();
+  }
+
+  function confirmSwap(ex: PlanExercise, option: SwapOption, setsDone: number) {
+    if (!setsDone) return applySwap(ex, option);
+    Alert.alert(
+      `Switch to ${option.name}?`,
+      `The ${setsDone} ${setsDone === 1 ? 'set' : 'sets'} you logged for ${ex.name} stay saved.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Switch', onPress: () => applySwap(ex, option) },
+      ],
+    );
+  }
+
+  async function switchBack(ex: PlanExercise) {
+    const original = ex.swapped_from;
+    if (!original) return;
+    setError(null);
+    const { error: err } = await supabase
+      .from('plan_exercises')
+      .update({
+        name: original.name,
+        equipment: original.equipment,
+        reps: original.reps || ex.reps,
+        notes: original.notes,
+        swapped_from: null,
+      })
+      .eq('id', ex.id);
+    if (err) return setError(err.message);
+    await load();
+  }
+
   async function undoSet(set: SetLog) {
     await supabase.from('set_logs').delete().eq('id', set.id);
     setLogged((l) => l.filter((s) => s.id !== set.id));
@@ -194,7 +273,11 @@ export default function Workout() {
 
       {exercises.map((ex) => {
         const target = lightenedSets(ex.sets, score) + (extraSets[ex.id] ?? 0);
-        const done = logged.filter((s) => s.exercise_id === ex.id || (!s.exercise_id && s.exercise_name === ex.name));
+        // Match on name too, so sets logged before a machine swap stay with the old exercise.
+        const done = logged.filter(
+          (s) => s.exercise_name === ex.name && (s.exercise_id === ex.id || !s.exercise_id),
+        );
+        const swapOpen = swap?.exerciseId === ex.id ? swap : null;
         const last = previous[ex.name] ?? [];
         const advice = overloadAdvice(last, ex.reps, units);
         const rows = Math.max(target, done.length);
@@ -211,7 +294,30 @@ export default function Workout() {
               {target} × {ex.reps}
               {ex.rest_seconds ? ` · rest ${ex.rest_seconds}s` : ''}
               {ex.target_rpe ? ` · RPE ${Number(ex.target_rpe)}` : ''}
+              {ex.equipment ? ` · ${ex.equipment}` : ''}
             </Text>
+            {ex.swapped_from ? (
+              <View style={styles.headerRow}>
+                <Text style={[styles.muted, { flex: 1 }]}>⇄ Swapped from {ex.swapped_from.name}</Text>
+                <Pressable hitSlop={8} onPress={() => switchBack(ex)}>
+                  <Text style={styles.link}>Switch back</Text>
+                </Pressable>
+              </View>
+            ) : null}
+            {ex.notes ? <Text style={styles.muted}>💡 {ex.notes}</Text> : null}
+            {swapOpen ? (
+              <SwapPanel
+                state={swapOpen}
+                onNote={(note) => setSwap((s) => (s ? { ...s, note } : s))}
+                onPick={(o) => confirmSwap(ex, o, done.length)}
+                onMore={() => findSwaps(ex, true)}
+                onClose={() => setSwap(null)}
+              />
+            ) : (
+              <Pressable hitSlop={8} onPress={() => findSwaps(ex)} accessibilityRole="button">
+                <Text style={styles.link}>⇄ Machine taken? Swap it</Text>
+              </Pressable>
+            )}
             {last.length ? <Text style={styles.muted}>Last time: {describeSets(last, units)}</Text> : null}
             {advice ? <Text style={styles.advice}>{advice.text}</Text> : null}
 
@@ -295,6 +401,71 @@ export default function Workout() {
   );
 }
 
+function SwapPanel({
+  state,
+  onNote,
+  onPick,
+  onMore,
+  onClose,
+}: {
+  state: SwapState;
+  onNote: (note: string) => void;
+  onPick: (option: SwapOption) => void;
+  onMore: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <View style={styles.swapPanel}>
+      <View style={styles.headerRow}>
+        <Text style={styles.swapTitle}>Do one of these instead</Text>
+        <Pressable hitSlop={8} onPress={onClose}>
+          <Text style={styles.undo}>Close</Text>
+        </Pressable>
+      </View>
+      {state.loading ? (
+        <View style={styles.swapLoading}>
+          <ActivityIndicator color={colors.accent} />
+          <Text style={styles.muted}>Finding the same movement on other equipment…</Text>
+        </View>
+      ) : null}
+      {state.options.map((o) => (
+        <Pressable
+          key={o.name}
+          onPress={() => onPick(o)}
+          disabled={state.applying !== null}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.swapOption, (pressed || state.applying === o.name) && { opacity: 0.6 }]}
+        >
+          <View style={styles.headerRow}>
+            <Text style={styles.swapName}>{o.name}</Text>
+            {state.applying === o.name ? (
+              <ActivityIndicator color={colors.accent} />
+            ) : (
+              <Text style={styles.link}>Use</Text>
+            )}
+          </View>
+          <Text style={styles.muted}>
+            {o.equipment}
+            {o.reps ? ` · ${o.reps} reps` : ''}
+          </Text>
+          {o.why ? <Text style={styles.muted}>{o.why}</Text> : null}
+        </Pressable>
+      ))}
+      <ErrorText>{state.error}</ErrorText>
+      {!state.loading ? (
+        <>
+          <Input
+            value={state.note}
+            onChangeText={onNote}
+            placeholder='Anything else busy? e.g. "no free benches"'
+          />
+          <Button title={state.options.length ? 'Show other options' : 'Try again'} variant="secondary" onPress={onMore} />
+        </>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: space.md },
   bannerTitle: { color: colors.text, fontSize: 16, fontWeight: '800', marginBottom: space.xs },
@@ -309,4 +480,16 @@ const styles = StyleSheet.create({
   setInput: { flex: 1, paddingVertical: space.sm },
   logButton: { minHeight: 44, paddingHorizontal: space.lg },
   undo: { color: colors.muted, fontSize: 13 },
+  swapPanel: { gap: space.sm, backgroundColor: colors.bg, borderRadius: radius.md, padding: space.md },
+  swapTitle: { color: colors.text, fontSize: 15, fontWeight: '800', flex: 1 },
+  swapLoading: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm },
+  swapOption: {
+    gap: 2,
+    backgroundColor: colors.cardAlt,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: space.md,
+  },
+  swapName: { color: colors.text, fontSize: 16, fontWeight: '800', flex: 1 },
 });

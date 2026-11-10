@@ -24,6 +24,12 @@ An AI fitness coach for people who train in the gym. Built with Expo (React Nati
 
 Not yet: reading sleep from Apple Health or a watch. That needs a development build of the app (not Expo Go) and an Apple developer account, so it's a separate step.
 
+## What's in stage three
+
+- **Machine taken? Swap it**: during a workout, tap "Machine taken? Swap it" on any exercise. Spotter suggests 2 or 3 exercises that work the same muscles with the same movement on different equipment (dumbbells, cables, another machine), so your split, goal and number of exercises stay the same. Tell it what else is busy for more options. Pick one and log it as normal; "Switch back" returns to the original. Sets you already logged stay saved.
+- **Full recipes**: "Suggest a meal" now gives a full recipe: exact ingredient amounts, step-by-step cooking instructions, prep and cook time, and calories, protein, carbs and fat. Ingredient swaps update the amounts, steps and macros too.
+- **Saved recipes**: save a recipe you like with "Save recipe" and find it later under "Saved recipes" on the Eat tab. Tap "I ate this" to log it as a meal in one tap.
+
 ## How it fits together
 
 ```
@@ -34,6 +40,7 @@ Expo app (src/)  ──►  Supabase Auth + Postgres (row-level security: users 
                         generate-plan  builds a plan from the Plan tab
                         nutrition      food photo estimates + meal suggestions
                         form-check     reviews frames from a set video (in the background)
+                        swap-exercise  equivalent exercises when a machine is taken
                               │
                               └──►  Claude API (key stored as a Supabase secret, never in the app)
 ```
@@ -60,7 +67,10 @@ npx supabase functions deploy coach --use-api
 npx supabase functions deploy generate-plan --use-api
 npx supabase functions deploy nutrition --use-api
 npx supabase functions deploy form-check --use-api
+npx supabase functions deploy swap-exercise --use-api
 ```
+
+(Or deploy them all at once with `npx supabase functions deploy --use-api`.)
 
 The coach uses `claude-opus-5-5` by default. To use a different Claude model: `npx supabase secrets set ANTHROPIC_MODEL=<model id>`.
 
@@ -91,6 +101,8 @@ src/app/                 screens (Expo Router: every file is a route)
   form-check/new.tsx     film and send a set
   form-check/[id].tsx    form feedback
   form-checks.tsx        form check history
+  recipes.tsx            saved recipes
+  recipe/[id].tsx        one saved recipe
   check-in.tsx           energy check-in
 src/lib/                 Supabase client, API calls, energy scoring, types, theme
 src/providers/           auth/session state

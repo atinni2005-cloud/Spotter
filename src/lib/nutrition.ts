@@ -79,3 +79,53 @@ export function formatTime(hhmm: string): string {
   const hour = h % 12 === 0 ? 12 : h % 12;
   return m ? `${hour}:${String(m).padStart(2, '0')} ${suffix}` : `${hour} ${suffix}`;
 }
+
+export type Overage = { key: keyof Totals; label: string; unit: string; over: number; tip: string };
+
+const OVER_RULES: { key: keyof Totals; label: string; unit: string; margin: number; tip: string }[] = [
+  {
+    key: 'calories',
+    label: 'Calories',
+    unit: 'kcal',
+    margin: 0.05,
+    tip: 'No stress, one day won\'t undo your progress. Keep the rest of today light: water, veg or a lean protein snack if you\'re hungry.',
+  },
+  {
+    key: 'fat_g',
+    label: 'Fat',
+    unit: 'g',
+    margin: 0.15,
+    tip: 'Usually from oils, sauces, cheese or fried food. Pick grilled or lean options for the next meal.',
+  },
+  {
+    key: 'carbs_g',
+    label: 'Carbs',
+    unit: 'g',
+    margin: 0.15,
+    tip: 'Fine on a hard training day. Otherwise lean on protein and veg for the next meal.',
+  },
+  {
+    key: 'protein_g',
+    label: 'Protein',
+    unit: 'g',
+    margin: 0.25,
+    tip: 'Extra protein is generally fine for healthy people, it just uses up calories you could spend elsewhere.',
+  },
+];
+
+/** Targets the user has gone over today, most important first (small overshoots are ignored). */
+export function overTargets(totals: Totals, targets: Targets | null): Overage[] {
+  if (!targets) return [];
+  const goalFor: Record<keyof Totals, number> = {
+    calories: targets.calories,
+    protein_g: targets.protein_g,
+    carbs_g: targets.carbs_g,
+    fat_g: targets.fat_g,
+  };
+  return OVER_RULES.flatMap((r) => {
+    const goal = goalFor[r.key];
+    const value = totals[r.key];
+    if (!goal || value <= goal * (1 + r.margin)) return [];
+    return [{ key: r.key, label: r.label, unit: r.unit, over: Math.round(value - goal), tip: r.tip }];
+  });
+}

@@ -116,7 +116,19 @@ async function replan(profile: Profile | null, totals?: { calories: number; prot
     }
     if (!plan) {
       const result = await suggestMeal();
-      if (result.met || !result.suggestion) {
+      const overCalories = result.over?.calories ?? 0;
+      if (overCalories > (profile.calorie_target ?? 0) * 0.05 && overCalories > 0) {
+        // Already over on calories: a friendly heads-up instead of another meal.
+        const protein = result.remaining.protein_g;
+        plan = {
+          key,
+          title: `You're ${overCalories} kcal over today`,
+          body:
+            protein && protein > 15
+              ? `No stress. If you're hungry, keep it lean: something like ${result.suggestion?.title ?? 'Greek yogurt or a protein shake'} gets you closer to protein.`
+              : "No stress, one day won't undo your progress. Keep the rest of the evening light and get back on plan tomorrow.",
+        };
+      } else if (result.met || !result.suggestion) {
         plan = { key, met: true };
       } else {
         const gap = result.remaining.protein_g

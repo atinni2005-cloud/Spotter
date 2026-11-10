@@ -109,6 +109,8 @@ export type MealIdea = {
 
 export type MealSuggestion = {
   remaining: { calories: number | null; protein_g: number | null };
+  /** How far over each target the user already is today (0 when not over). */
+  over?: { calories: number; protein_g: number; carbs_g: number; fat_g: number };
   met: boolean;
   suggestion: MealIdea | null;
 };

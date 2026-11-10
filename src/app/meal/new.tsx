@@ -1,9 +1,10 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, ErrorText, Input, Label, Screen } from '../../components/ui';
 import { analyzeMeal, type MealEstimate } from '../../lib/api';
 import { pickMealPhoto, type Source } from '../../lib/media';
+import { overTargets, profileTargets, startOfTodayIso, sumMeals } from '../../lib/nutrition';
 import { refreshMealRemindersFromDb } from '../../lib/reminders';
 import { supabase } from '../../lib/supabase';
 import { colors, radius, space } from '../../lib/theme';
@@ -89,9 +90,38 @@ export default function NewMeal() {
       source: photo ? 'photo' : 'text',
       raw: estimate ? { items: estimate.items, note: estimate.note } : null,
     });
-    setSaving(false);
-    if (err) return setError(err.message);
+    if (err) {
+      setSaving(false);
+      return setError(err.message);
+    }
     refreshMealRemindersFromDb(profile);
+
+    // Let the user know, kindly, if this meal took them over a target.
+    const targets = profileTargets(profile);
+    if (targets) {
+      const { data } = await supabase
+        .from('meal_logs')
+        .select('calories, protein_g, carbs_g, fat_g')
+        .gte('eaten_at', startOfTodayIso());
+      const after = sumMeals(data ?? []);
+      const before = {
+        calories: after.calories - Math.round(num(fields.calories)),
+        protein_g: after.protein_g - num(fields.protein_g),
+        carbs_g: after.carbs_g - num(fields.carbs_g),
+        fat_g: after.fat_g - num(fields.fat_g),
+      };
+      const wasOver = new Set(overTargets(before, targets).map((o) => o.key));
+      const newlyOver = overTargets(after, targets).filter((o) => !wasOver.has(o.key));
+      if (newlyOver.length) {
+        setSaving(false);
+        const lines = newlyOver.map((o) => `${o.label}: ${o.over} ${o.unit} over`).join('\n');
+        Alert.alert('Heads up: over target', `${lines}\n\n${newlyOver[0].tip}`, [
+          { text: 'Got it', onPress: () => router.back() },
+        ]);
+        return;
+      }
+    }
+    setSaving(false);
     router.back();
   }
 

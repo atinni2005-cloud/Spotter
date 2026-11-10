@@ -3,7 +3,7 @@ import { useCallback, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, ErrorText, Input, ProgressBar } from '../../components/ui';
 import { type MealSuggestion, suggestMeal, swapMealIngredients } from '../../lib/api';
-import { formatTime, profileTargets, startOfTodayIso, sumMeals } from '../../lib/nutrition';
+import { formatTime, overTargets, profileTargets, startOfTodayIso, sumMeals } from '../../lib/nutrition';
 import { refreshMealReminders } from '../../lib/reminders';
 import { supabase } from '../../lib/supabase';
 import { colors, space } from '../../lib/theme';
@@ -23,6 +23,7 @@ export default function Eat() {
 
   const targets = profileTargets(profile);
   const totals = sumMeals(meals);
+  const overs = overTargets(totals, targets);
 
   const load = useCallback(async () => {
     const { data, error: err } = await supabase
@@ -143,6 +144,20 @@ export default function Eat() {
       </View>
 
       <ErrorText>{error}</ErrorText>
+
+      {overs.length ? (
+        <Card style={{ gap: space.sm, borderColor: colors.warn }}>
+          <Text style={[styles.cardLabel, { color: colors.warn }]}>OVER TARGET TODAY</Text>
+          {overs.map((o) => (
+            <View key={o.key} style={{ gap: 2 }}>
+              <Text style={styles.overLine}>
+                {o.label}: {o.over} {o.unit} over
+              </Text>
+              <Text style={styles.muted}>{o.tip}</Text>
+            </View>
+          ))}
+        </Card>
+      ) : null}
 
       {targets ? (
         <Card style={{ gap: space.sm }}>
@@ -265,6 +280,7 @@ const styles = StyleSheet.create({
   ingredientText: { color: colors.text, fontSize: 14 },
   ingredientTextOff: { color: colors.danger, textDecorationLine: 'line-through' },
   swap: { color: colors.accent, fontSize: 14, lineHeight: 20 },
+  overLine: { color: colors.text, fontSize: 16, fontWeight: '800' },
   ideaTitle: { color: colors.text, fontSize: 18, fontWeight: '800' },
   section: { color: colors.text, fontSize: 20, fontWeight: '800', marginTop: space.sm },
   mealName: { color: colors.text, fontSize: 17, fontWeight: '700', flex: 1 },

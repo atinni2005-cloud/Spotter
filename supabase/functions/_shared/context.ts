@@ -202,14 +202,19 @@ export async function loadTodayNutrition(supabase: SupabaseClient, timezone: str
 
 export function describeNutrition(p: Profile, n: DayNutrition): string {
   const target = (have: number, goal: number | null, unit: string) =>
-    goal ? `${have}${unit} of ${goal}${unit} (${Math.max(0, goal - have)}${unit} left)` : `${have}${unit} (no target set)`;
+    !goal
+      ? `${have}${unit} (no target set)`
+      : have > goal
+        ? `${have}${unit} of ${goal}${unit} (OVER by ${have - goal}${unit})`
+        : `${have}${unit} of ${goal}${unit} (${goal - have}${unit} left)`;
   const meals = n.meals.length
     ? n.meals.map((m) => `- ${m.name ?? "Meal"}: ${m.calories} kcal, ${Math.round(m.protein_g)} g protein`).join("\n")
     : "- nothing logged yet";
   return [
     `Calories: ${target(n.calories, p.calorie_target, " kcal")}`,
     `Protein: ${target(n.protein_g, p.protein_target_g, " g")}`,
-    `Carbs: ${n.carbs_g} g, fat: ${n.fat_g} g`,
+    `Carbs: ${target(n.carbs_g, p.carbs_target_g, " g")}`,
+    `Fat: ${target(n.fat_g, p.fat_target_g, " g")}`,
     "Meals today:",
     meals,
   ].join("\n");

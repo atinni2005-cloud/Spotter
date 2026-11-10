@@ -15,6 +15,7 @@ An AI fitness coach for people who train in the gym. Built with Expo (React Nati
 - **Food photo macros** (Eat tab): snap or choose a photo, or type what you ate. Claude estimates calories, protein, carbs and fat per item; you can fix any number before saving.
 - **Daily targets**: add sex, birth year, height and weight and Spotter works out calories and protein from your goal and training days (all editable).
 - **Meal ideas**: a meal that fills what you have left today. Tap any ingredient you don't have and Spotter swaps it for an equivalent with similar calories and protein.
+- **Over-target heads-up**: a friendly note on the Eat tab and right after logging a meal that takes you over calories, protein, carbs or fat. The evening reminder and the coach mention it too.
 - **Meal reminder**: pick a time. If you're short on protein or calories then, you get a notification with a meal that fills the gap. Reminders are local notifications, so they work in Expo Go.
 - **Workout logging**: start a day from the Plan tab, log weight and reps per set, see what you did last time, and get a "go heavier" hint once you hit the top of the rep range. Low energy lightens the number of sets.
 - **Form check**: film your first set (or pick a video). The app uploads it and sends still frames to Claude; feedback (what went well, up to 3 fixes with cues, safety notes, what to do next set) arrives about a minute later.

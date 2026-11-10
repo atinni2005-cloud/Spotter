@@ -7,7 +7,7 @@
 //
 // POST { "action": "suggest" }
 //   Suggests one meal that fills the gap between what the user ate today and their targets.
-//   Response: { remaining: {calories, protein_g}, met: boolean,
+//   Response: { remaining: {calories, protein_g}, over: {calories, protein_g, carbs_g, fat_g}, met: boolean,
 //               suggestion: {title, description, calories, protein_g, ingredients: [{name, amount}]} | null }
 //
 // POST { "action": "swap", "meal": <suggestion>, "missing": ["Greek yogurt", ...], "note"?: "..." }
@@ -191,15 +191,21 @@ async function suggest(profile: Profile, supabase: Parameters<typeof loadTodayNu
     calories: profile.calorie_target ? Math.max(0, profile.calorie_target - day.calories) : null,
     protein_g: profile.protein_target_g ? Math.max(0, profile.protein_target_g - day.protein_g) : null,
   };
+  const over = {
+    calories: profile.calorie_target ? Math.max(0, day.calories - profile.calorie_target) : 0,
+    protein_g: profile.protein_target_g ? Math.max(0, day.protein_g - profile.protein_target_g) : 0,
+    carbs_g: profile.carbs_target_g ? Math.max(0, day.carbs_g - profile.carbs_target_g) : 0,
+    fat_g: profile.fat_target_g ? Math.max(0, day.fat_g - profile.fat_target_g) : 0,
+  };
   const met =
     (remaining.calories === null || remaining.calories <= CALORIE_SLACK) &&
     (remaining.protein_g === null || remaining.protein_g <= PROTEIN_SLACK);
-  if (met) return json({ remaining, met: true, suggestion: null });
+  if (met) return json({ remaining, over, met: true, suggestion: null });
 
   const suggestion = await structured<Suggestion>(
     [
       "You are a sports nutritionist. Suggest ONE simple meal or snack the user can make or buy this evening that closes the gap to their daily targets.",
-      "Prioritise hitting protein. Stay at or under the remaining calories. Use everyday foods, give rough amounts, and keep it realistic for one sitting (max about 70 g protein).",
+      "Prioritise hitting protein. Stay at or under the remaining calories; if they are already at or over their calories, suggest a very light, lean, high-protein option. Use everyday foods, give rough amounts, and keep it realistic for one sitting (max about 70 g protein).",
       `The user's goal is to ${profile.goal ? GOAL_LABEL[profile.goal] : "stay fit"}.`,
     ].join("\n"),
     [
@@ -212,6 +218,7 @@ async function suggest(profile: Profile, supabase: Parameters<typeof loadTodayNu
   );
   return json({
     remaining,
+    over,
     met: false,
     suggestion: cleanSuggestion(suggestion),
   });

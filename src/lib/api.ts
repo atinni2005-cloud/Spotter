@@ -5,6 +5,7 @@ export type CoachEvent =
   | { type: 'text'; text: string }
   | { type: 'status'; text: string }
   | { type: 'plan'; planId: string; title: string }
+  | { type: 'suggestions'; replies: string[] }
   | { type: 'done' }
   | { type: 'error'; message: string };
 

@@ -1,7 +1,8 @@
-import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { router, useNavigation } from 'expo-router';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -11,6 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { ChatText } from '../../components/ChatText';
 import { streamCoach } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import { colors, radius, space } from '../../lib/theme';
@@ -22,19 +24,22 @@ type UiMessage = {
   content: string;
   planId?: string | null;
   status?: string;
+  replies?: string[];
   pending?: boolean;
   error?: boolean;
 };
 
 const SUGGESTIONS = [
-  'Build my plan for this week',
   "I'm wiped out today. What should I do?",
-  'How many sets per muscle should I do?',
-  'Swap squats for something easier on my knees',
+  'What should I eat after training?',
+  "I've hit a plateau on bench. Ideas?",
+  'Is creatine worth taking?',
+  'Build my plan for this week',
 ];
 
 export default function Coach() {
-  const { profile } = useAuth();
+  const { profile, session } = useAuth();
+  const navigation = useNavigation();
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [input, setInput] = useState('');
@@ -48,13 +53,46 @@ export default function Coach() {
       .order('created_at', { ascending: false })
       .limit(50)
       .then(({ data }) => {
-        setMessages(
-          (data ?? []).map((m) => ({ id: m.id, role: m.role, content: m.content, planId: m.plan_id })),
-        );
+        setMessages((data ?? []).map((m) => ({ id: m.id, role: m.role, content: m.content, planId: m.plan_id })));
         setLoadingHistory(false);
       });
     return () => abortRef.current?.abort();
   }, []);
+
+  const clearChat = useCallback(() => {
+    if (sending) return;
+    Alert.alert(
+      'Start a new chat?',
+      'This clears your conversation with the coach. Your plan, meals and workouts stay.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            const userId = session?.user.id;
+            if (!userId) return;
+            const { error } = await supabase.from('chat_messages').delete().eq('user_id', userId);
+            if (error) Alert.alert('Could not clear the chat', error.message);
+            else setMessages([]);
+          },
+        },
+      ],
+    );
+  }, [sending, session?.user.id]);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight:
+        messages.length > 0
+          ? () => (
+              <Pressable onPress={clearChat} hitSlop={10} style={{ paddingHorizontal: space.lg }}>
+                <Text style={{ color: colors.accent, fontWeight: '700', fontSize: 15 }}>New chat</Text>
+              </Pressable>
+            )
+          : undefined,
+    });
+  }, [navigation, clearChat, messages.length]);
 
   const updateReply = useCallback((id: string, patch: (m: UiMessage) => Partial<UiMessage>) => {
     setMessages((list) => list.map((m) => (m.id === id ? { ...m, ...patch(m) } : m)));
@@ -67,11 +105,11 @@ export default function Coach() {
     setSending(true);
 
     const replyId = `reply-${Date.now()}`;
-    // The list is inverted, so newest messages go first.
+    // The list is inverted, so newest messages go first. Old quick replies go away once you answer.
     setMessages((list) => [
       { id: replyId, role: 'assistant', content: '', pending: true },
       { id: `user-${Date.now()}`, role: 'user', content: message },
-      ...list,
+      ...list.map((m) => (m.replies ? { ...m, replies: undefined } : m)),
     ]);
 
     const controller = new AbortController();
@@ -80,10 +118,17 @@ export default function Coach() {
       await streamCoach(
         message,
         (event) => {
-          if (event.type === 'text') updateReply(replyId, (m) => ({ content: m.content + event.text, status: undefined }));
+          if (event.type === 'text')
+            updateReply(replyId, (m) => ({ content: m.content + event.text, status: undefined }));
           else if (event.type === 'status') updateReply(replyId, () => ({ status: event.text }));
           else if (event.type === 'plan') updateReply(replyId, () => ({ planId: event.planId, status: undefined }));
-          else if (event.type === 'error') updateReply(replyId, (m) => ({ content: m.content || event.message, error: !m.content }));
+          else if (event.type === 'suggestions') updateReply(replyId, () => ({ replies: event.replies }));
+          else if (event.type === 'done') {
+            // The reply is finished; quick replies may still arrive after this.
+            updateReply(replyId, () => ({ pending: false, status: undefined }));
+            setSending(false);
+          } else if (event.type === 'error')
+            updateReply(replyId, (m) => ({ content: m.content || event.message, error: !m.content }));
         },
         controller.signal,
       );
@@ -114,7 +159,8 @@ export default function Coach() {
         <View style={styles.emptyWrap}>
           <Text style={styles.emptyTitle}>Hey{profile?.display_name ? ` ${profile.display_name}` : ''} 👋</Text>
           <Text style={styles.emptyText}>
-            I'm your Spotter coach. Ask me anything about training, or let me build your week.
+            I'm your Spotter coach. Ask me anything: training, food, recovery, motivation. Or just tell me how your
+            day's going.
           </Text>
           <View style={{ gap: space.sm, marginTop: space.lg }}>
             {SUGGESTIONS.map((s) => (
@@ -130,7 +176,10 @@ export default function Coach() {
           data={messages}
           keyExtractor={(m) => m.id}
           contentContainerStyle={{ padding: space.lg, gap: space.md }}
-          renderItem={({ item }) => <Bubble message={item} />}
+          extraData={sending}
+          renderItem={({ item, index }) => (
+            <Bubble message={item} onReply={index === 0 && !sending ? send : undefined} />
+          )}
           keyboardShouldPersistTaps="handled"
         />
       )}
@@ -159,23 +208,41 @@ export default function Coach() {
   );
 }
 
-function Bubble({ message }: { message: UiMessage }) {
+function Bubble({ message, onReply }: { message: UiMessage; onReply?: (text: string) => void }) {
   const mine = message.role === 'user';
+  const replies = onReply && !mine ? (message.replies ?? []) : [];
   return (
-    <View style={[styles.bubble, mine ? styles.mine : styles.theirs, message.error && { borderColor: colors.danger }]}>
-      {message.content ? (
-        <Text style={[styles.bubbleText, mine && { color: colors.accentText }]}>{message.content}</Text>
-      ) : null}
-      {message.pending && (message.status || !message.content) ? (
-        <View style={styles.statusRow}>
-          <ActivityIndicator size="small" color={colors.muted} />
-          {message.status ? <Text style={styles.status}>{message.status}</Text> : null}
+    <View style={{ gap: space.sm }}>
+      <View
+        style={[styles.bubble, mine ? styles.mine : styles.theirs, message.error && { borderColor: colors.danger }]}
+      >
+        {message.content ? (
+          mine ? (
+            <Text style={[styles.bubbleText, { color: colors.accentText }]}>{message.content}</Text>
+          ) : (
+            <ChatText text={message.content} style={styles.bubbleText} />
+          )
+        ) : null}
+        {message.pending && (message.status || !message.content) ? (
+          <View style={styles.statusRow}>
+            <ActivityIndicator size="small" color={colors.muted} />
+            {message.status ? <Text style={styles.status}>{message.status}</Text> : null}
+          </View>
+        ) : null}
+        {message.planId ? (
+          <Pressable style={styles.planLink} onPress={() => router.navigate('/plan')}>
+            <Text style={styles.planLinkText}>View your new plan →</Text>
+          </Pressable>
+        ) : null}
+      </View>
+      {replies.length ? (
+        <View style={styles.replies}>
+          {replies.map((r) => (
+            <Pressable key={r} style={styles.replyChip} onPress={() => onReply?.(r)}>
+              <Text style={styles.replyText}>{r}</Text>
+            </Pressable>
+          ))}
         </View>
-      ) : null}
-      {message.planId ? (
-        <Pressable style={styles.planLink} onPress={() => router.navigate('/plan')}>
-          <Text style={styles.planLinkText}>View your new plan →</Text>
-        </Pressable>
       ) : null}
     </View>
   );
@@ -209,6 +276,15 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   planLinkText: { color: colors.accent, fontWeight: '700' },
+  replies: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, maxWidth: '92%' },
+  replyChip: {
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: radius.pill,
+    paddingVertical: space.xs + 2,
+    paddingHorizontal: space.md,
+  },
+  replyText: { color: colors.accent, fontSize: 14, fontWeight: '600' },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',

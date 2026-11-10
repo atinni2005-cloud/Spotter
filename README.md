@@ -58,8 +58,6 @@ npx expo start
 
 Scan the QR code with your phone's camera (iOS) or the Expo Go app (Android).
 
-If `npx expo start` fails with `ERR_PACKAGE_PATH_NOT_EXPORTED ... metro`, your terminal is using an older Node.js (common inside a conda `(base)` environment). Run `conda deactivate`, check `node -v` shows 22.13+, then `rm -rf node_modules && npm ci` and start again.
-
 ## Project layout
 
 ```

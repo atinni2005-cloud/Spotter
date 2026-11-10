@@ -5,9 +5,9 @@ An AI fitness coach for people who train in the gym. Built with Expo (React Nati
 ## What's in stage one
 
 - **Accounts**: email + password sign-up and sign-in (Supabase Auth).
-- **Onboarding**: goal (lose fat, build muscle, get stronger, general fitness), experience, training days, session length, training split (PPL, upper/lower, full body, bro split, Arnold, custom, or let the coach choose), injuries.
+- **Onboarding**: goal (lose fat, build muscle, get stronger, general fitness), experience, training days, session length, training split (PPL, upper/lower, full body, bro split, Arnold, custom, or let the coach choose), exercises per session, injuries.
 - **AI coach chat**: replies stream in word by word. The coach knows your profile, today's energy and your current plan, and can build a new week for you from the chat.
-- **Weekly plan**: generated from your goal, schedule and today's energy. Every day is editable: rename it, make it a rest day, add, remove, reorder and change exercises, sets, reps and rest.
+- **Weekly plan**: generated from your goal, split, schedule and today's energy. Each exercise has a "Watch" link to a form demo video. Every day is editable: rename it, make it a rest day, add, remove, reorder and change exercises, sets, reps and rest.
 - **Energy check-in**: five quick questions give an energy %. Low energy lightens today's session; below your rest threshold (30% by default, changeable in Profile) the coach suggests a rest day.
 
 The database already has tables for later stages (workout logging, form-check videos, meal photos and macro targets), so those can be added without reshaping the data.

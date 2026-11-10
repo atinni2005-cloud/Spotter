@@ -14,6 +14,7 @@ export type Profile = {
   timezone: string;
   training_split: string;
   split_notes: string | null;
+  exercises_per_session: number | null;
 };
 
 export type Energy = { score: number; created_at: string } | null;
@@ -118,6 +119,7 @@ export function describeProfile(p: Profile): string {
     `Training days per week: ${p.days_per_week ?? "not set"} (preferred days: ${days})`,
     `Session length: ${p.session_minutes ?? "not set"} minutes`,
     `Preferred training split: ${describeSplit(p)}`,
+    `Exercises per session: ${p.exercises_per_session ?? "no preference (coach decides, usually 4-6)"}`,
     `Injuries or limits: ${p.injuries?.trim() || "none reported"}`,
     `Units: ${p.units}`,
     `Rest threshold: suggest rest when energy is below ${p.rest_threshold}%`,

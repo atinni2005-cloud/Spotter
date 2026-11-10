@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Button, Chip, Choice, ErrorText, Input, Label, Screen, Subtitle, Title } from '../components/ui';
 import { supabase } from '../lib/supabase';
 import { colors, space } from '../lib/theme';
-import { DAY_SHORT, EXPERIENCE, type Experience, type Goal, GOALS, SPLITS, type TrainingSplit } from '../lib/types';
+import { DAY_SHORT, EXPERIENCE, type Experience, type Goal, EXERCISE_COUNTS, GOALS, SPLITS, type TrainingSplit } from '../lib/types';
 import { useAuth } from '../providers/AuthProvider';
 
 const SESSION_LENGTHS = [30, 45, 60, 75, 90];
@@ -18,6 +18,7 @@ export default function Onboarding() {
   const [minutes, setMinutes] = useState<number>(profile?.session_minutes ?? 60);
   const [split, setSplit] = useState<TrainingSplit>(profile?.training_split ?? 'auto');
   const [splitNotes, setSplitNotes] = useState(profile?.split_notes ?? '');
+  const [exerciseCount, setExerciseCount] = useState<number | null>(profile?.exercises_per_session ?? null);
   const [name, setName] = useState(profile?.display_name ?? '');
   const [injuries, setInjuries] = useState(profile?.injuries ?? '');
   const [saving, setSaving] = useState(false);
@@ -50,6 +51,7 @@ export default function Onboarding() {
         session_minutes: minutes,
         training_split: split,
         split_notes: split === 'custom' ? splitNotes.trim() : null,
+        exercises_per_session: exerciseCount,
         injuries: injuries.trim() || null,
         timezone,
         onboarded_at: new Date().toISOString(),
@@ -139,6 +141,18 @@ export default function Onboarding() {
               autoFocus
             />
           )}
+          <View style={{ height: space.md }} />
+          <Label>How many exercises do you usually do per session?</Label>
+          <View style={styles.row}>
+            {EXERCISE_COUNTS.map((n) => (
+              <Chip
+                key={String(n)}
+                label={n === null ? 'Coach decides' : String(n)}
+                selected={exerciseCount === n}
+                onPress={() => setExerciseCount(n)}
+              />
+            ))}
+          </View>
         </>
       )}
 

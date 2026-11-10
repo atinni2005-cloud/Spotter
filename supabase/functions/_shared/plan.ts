@@ -74,7 +74,7 @@ type GeneratedPlan = { title: string; summary: string; days: GeneratedDay[] };
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(n)));
 
 /** Keep the model's output inside the database's limits, and make sure all 7 days exist. */
-function sanitize(plan: GeneratedPlan): GeneratedPlan {
+function sanitize(plan: GeneratedPlan, maxExercises: number): GeneratedPlan {
   const byIndex = new Map<number, GeneratedDay>();
   for (const d of plan.days ?? []) {
     const i = clamp(d.day_index, 0, 6);
@@ -90,7 +90,7 @@ function sanitize(plan: GeneratedPlan): GeneratedPlan {
     days.push({
       ...d,
       day_index: i,
-      exercises: d.is_rest ? [] : (d.exercises ?? []).slice(0, 12).map((e) => ({
+      exercises: d.is_rest ? [] : (d.exercises ?? []).slice(0, maxExercises).map((e) => ({
         ...e,
         sets: clamp(e.sets ?? 3, 1, 20),
         rest_seconds: clamp(e.rest_seconds ?? 90, 0, 900),
@@ -118,6 +118,7 @@ export async function generateAndSavePlan(
     "Design one week of training that fits the user's goal, experience, schedule and session length.",
     "Use exercises available in a typical commercial gym. Prefer proven compound lifts, then accessories.",
     "Follow the user's preferred training split. Lay it out over their training days, repeating or rotating it if they train more days than the split has (e.g. PPL on 6 days = PPLPPL). If they have fewer days than the split needs, say so in the summary and pick the closest fit (for example upper/lower or full body). Only choose the split yourself when they have no preference.",
+    "If the user set a number of exercises per session, every training day must have exactly that many exercises: no more, no fewer. Otherwise use 4-6 for most sessions (fewer for short sessions or beginners). Never pad a day with extra accessories.",
     "Respect injuries and limits: avoid or substitute movements that load an injured area.",
     "Volume and intensity must suit the experience level; beginners get simpler programs.",
     "Rest days have is_rest = true and an empty exercises list.",
@@ -149,7 +150,7 @@ export async function generateAndSavePlan(
   if (response.stop_reason === "max_tokens") throw new Error("The plan was cut off. Please try again.");
 
   const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
-  const plan = sanitize(JSON.parse(text) as GeneratedPlan);
+  const plan = sanitize(JSON.parse(text) as GeneratedPlan, profile.exercises_per_session ?? 12);
 
   const { data: planId, error } = await supabase.rpc("save_weekly_plan", {
     plan: {

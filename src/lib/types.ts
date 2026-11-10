@@ -24,6 +24,7 @@ export type Profile = {
   timezone: string;
   training_split: TrainingSplit;
   split_notes: string | null;
+  exercises_per_session: number | null;
   onboarded_at: string | null;
 };
 
@@ -90,6 +91,14 @@ export const SPLITS: { value: TrainingSplit; label: string; blurb: string }[] = 
   { value: 'arnold', label: 'Arnold split', blurb: 'Chest + back, shoulders + arms, legs' },
   { value: 'custom', label: 'Something else', blurb: 'Describe your own split' },
 ];
+
+/** Choices for "exercises per session". null = let the coach decide. */
+export const EXERCISE_COUNTS: (number | null)[] = [3, 4, 5, 6, 7, 8, null];
+
+/** A YouTube search for a demo of the exercise with good form. */
+export function exerciseVideoUrl(name: string): string {
+  return `https://www.youtube.com/results?search_query=${encodeURIComponent(`how to ${name} proper form`)}`;
+}
 
 export const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 export const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];

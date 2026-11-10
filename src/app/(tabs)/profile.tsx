@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Button, Chip, Choice, ErrorText, Input, Label, Screen } from '../../components/ui';
 import { supabase } from '../../lib/supabase';
 import { colors, space } from '../../lib/theme';
-import { DAY_SHORT, EXPERIENCE, type Experience, type Goal, GOALS, SPLITS, type TrainingSplit } from '../../lib/types';
+import { DAY_SHORT, EXPERIENCE, type Experience, type Goal, EXERCISE_COUNTS, GOALS, SPLITS, type TrainingSplit } from '../../lib/types';
 import { useAuth } from '../../providers/AuthProvider';
 
 const SESSION_LENGTHS = [30, 45, 60, 75, 90];
@@ -18,6 +18,7 @@ export default function ProfileScreen() {
   const [minutes, setMinutes] = useState(60);
   const [split, setSplit] = useState<TrainingSplit>('auto');
   const [splitNotes, setSplitNotes] = useState('');
+  const [exerciseCount, setExerciseCount] = useState<number | null>(null);
   const [injuries, setInjuries] = useState('');
   const [units, setUnits] = useState<'kg' | 'lb'>('kg');
   const [restThreshold, setRestThreshold] = useState(30);
@@ -34,6 +35,7 @@ export default function ProfileScreen() {
     setMinutes(profile.session_minutes ?? 60);
     setSplit(profile.training_split ?? 'auto');
     setSplitNotes(profile.split_notes ?? '');
+    setExerciseCount(profile.exercises_per_session ?? null);
     setInjuries(profile.injuries ?? '');
     setUnits(profile.units);
     setRestThreshold(profile.rest_threshold);
@@ -55,6 +57,7 @@ export default function ProfileScreen() {
         session_minutes: minutes,
         training_split: split,
         split_notes: split === 'custom' ? splitNotes.trim() || null : null,
+        exercises_per_session: exerciseCount,
         injuries: injuries.trim() || null,
         units,
         rest_threshold: restThreshold,
@@ -116,6 +119,18 @@ export default function ProfileScreen() {
           multiline
         />
       )}
+
+      <Label>Exercises per session</Label>
+      <View style={styles.row}>
+        {EXERCISE_COUNTS.map((n) => (
+          <Chip
+            key={String(n)}
+            label={n === null ? 'Coach decides' : String(n)}
+            selected={exerciseCount === n}
+            onPress={() => setExerciseCount(n)}
+          />
+        ))}
+      </View>
 
       <Label>Injuries or limits</Label>
       <Input value={injuries} onChangeText={setInjuries} placeholder="None" multiline />

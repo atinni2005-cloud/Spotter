@@ -1,12 +1,12 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, ErrorText } from '../../components/ui';
 import { generatePlan } from '../../lib/api';
 import { energyAdvice } from '../../lib/energy';
 import { supabase } from '../../lib/supabase';
 import { colors, space } from '../../lib/theme';
-import { DAY_NAMES, type PlanDay, todayIndex, type WorkoutPlan } from '../../lib/types';
+import { DAY_NAMES, exerciseVideoUrl, type PlanDay, todayIndex, type WorkoutPlan } from '../../lib/types';
 import { useAuth } from '../../providers/AuthProvider';
 
 const PLAN_SELECT =
@@ -143,6 +143,14 @@ function DayCard({ day, isToday }: { day: PlanDay; isToday: boolean }) {
               <Text style={styles.exerciseSets}>
                 {e.sets} × {e.reps}
               </Text>
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel={`Watch how to do ${e.name}`}
+                hitSlop={8}
+                onPress={() => Linking.openURL(exerciseVideoUrl(e.name))}
+              >
+                <Text style={styles.watch}>▶ Watch</Text>
+              </Pressable>
             </View>
           ))
         )}
@@ -164,6 +172,7 @@ const styles = StyleSheet.create({
   exerciseRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: 6,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
@@ -171,4 +180,5 @@ const styles = StyleSheet.create({
   },
   exerciseName: { color: colors.text, fontSize: 15, flex: 1 },
   exerciseSets: { color: colors.muted, fontSize: 15, fontVariant: ['tabular-nums'] },
+  watch: { color: colors.accent, fontSize: 14, fontWeight: '700' },
 });

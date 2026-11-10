@@ -1,10 +1,10 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { Button, Card, ErrorText, Input, Label, Screen } from '../../components/ui';
 import { supabase } from '../../lib/supabase';
 import { colors, space } from '../../lib/theme';
-import { DAY_NAMES, type PlanDay } from '../../lib/types';
+import { DAY_NAMES, exerciseVideoUrl, type PlanDay } from '../../lib/types';
 
 type DraftExercise = {
   key: string;
@@ -187,6 +187,9 @@ export default function EditDay() {
                 <SmallAction label="↑ Up" onPress={() => move(i, -1)} disabled={i === 0} />
                 <SmallAction label="↓ Down" onPress={() => move(i, 1)} disabled={i === exercises.length - 1} />
                 <View style={{ flex: 1 }} />
+                {e.name.trim() ? (
+                  <SmallAction label="▶ Watch" onPress={() => Linking.openURL(exerciseVideoUrl(e.name.trim()))} />
+                ) : null}
                 <SmallAction
                   label="Remove"
                   danger

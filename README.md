@@ -26,7 +26,7 @@ Expo app (src/)  ──►  Supabase Auth + Postgres (row-level security: users 
 
 ## Setup
 
-You need: a free [Supabase](https://supabase.com) project, an [Anthropic API key](https://console.anthropic.com), Node.js 20+, and the **Expo Go** app on your phone.
+You need: a free [Supabase](https://supabase.com) project, an [Anthropic API key](https://console.anthropic.com), Node.js 22 (22.13 or newer; check with `node -v`), and the **Expo Go** app on your phone.
 
 ### 1. Database
 
@@ -57,6 +57,8 @@ npx expo start
 ```
 
 Scan the QR code with your phone's camera (iOS) or the Expo Go app (Android).
+
+If `npx expo start` fails with `ERR_PACKAGE_PATH_NOT_EXPORTED ... metro`, your terminal is using an older Node.js (common inside a conda `(base)` environment). Run `conda deactivate`, check `node -v` shows 22.13+, then `rm -rf node_modules && npm ci` and start again.
 
 ## Project layout
 

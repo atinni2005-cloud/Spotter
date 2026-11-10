@@ -117,6 +117,7 @@ export async function generateAndSavePlan(
     "You are Spotter, an expert strength and conditioning coach for people who train in a gym.",
     "Design one week of training that fits the user's goal, experience, schedule and session length.",
     "Use exercises available in a typical commercial gym. Prefer proven compound lifts, then accessories.",
+    "Follow the user's preferred training split. Lay it out over their training days, repeating or rotating it if they train more days than the split has (e.g. PPL on 6 days = PPLPPL). If they have fewer days than the split needs, say so in the summary and pick the closest fit (for example upper/lower or full body). Only choose the split yourself when they have no preference.",
     "Respect injuries and limits: avoid or substitute movements that load an injured area.",
     "Volume and intensity must suit the experience level; beginners get simpler programs.",
     "Rest days have is_rest = true and an empty exercises list.",

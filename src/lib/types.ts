@@ -1,4 +1,13 @@
 export type Goal = 'lose_fat' | 'build_muscle' | 'get_stronger' | 'general_fitness';
+export type TrainingSplit =
+  | 'auto'
+  | 'full_body'
+  | 'upper_lower'
+  | 'push_pull_legs'
+  | 'bro_split'
+  | 'arnold'
+  | 'custom';
+
 export type Experience = 'beginner' | 'intermediate' | 'advanced';
 
 export type Profile = {
@@ -13,6 +22,8 @@ export type Profile = {
   units: 'kg' | 'lb';
   rest_threshold: number;
   timezone: string;
+  training_split: TrainingSplit;
+  split_notes: string | null;
   onboarded_at: string | null;
 };
 
@@ -68,6 +79,16 @@ export const EXPERIENCE: { value: Experience; label: string; blurb: string }[] =
   { value: 'beginner', label: 'Beginner', blurb: 'Less than 1 year of regular training' },
   { value: 'intermediate', label: 'Intermediate', blurb: '1 to 3 years' },
   { value: 'advanced', label: 'Advanced', blurb: 'More than 3 years' },
+];
+
+export const SPLITS: { value: TrainingSplit; label: string; blurb: string }[] = [
+  { value: 'auto', label: 'Let my coach choose', blurb: 'Best fit for your goal and schedule' },
+  { value: 'push_pull_legs', label: 'Push / Pull / Legs', blurb: 'Chest-shoulders-triceps, back-biceps, legs' },
+  { value: 'upper_lower', label: 'Upper / Lower', blurb: 'Alternate upper body and lower body days' },
+  { value: 'full_body', label: 'Full body', blurb: 'Whole body every session' },
+  { value: 'bro_split', label: 'Bro split', blurb: 'One main muscle group per day' },
+  { value: 'arnold', label: 'Arnold split', blurb: 'Chest + back, shoulders + arms, legs' },
+  { value: 'custom', label: 'Something else', blurb: 'Describe your own split' },
 ];
 
 export const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];

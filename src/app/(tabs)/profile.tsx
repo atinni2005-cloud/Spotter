@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Button, Chip, Choice, ErrorText, Input, Label, Screen } from '../../components/ui';
 import { supabase } from '../../lib/supabase';
 import { colors, space } from '../../lib/theme';
-import { DAY_SHORT, EXPERIENCE, type Experience, type Goal, GOALS } from '../../lib/types';
+import { DAY_SHORT, EXPERIENCE, type Experience, type Goal, GOALS, SPLITS, type TrainingSplit } from '../../lib/types';
 import { useAuth } from '../../providers/AuthProvider';
 
 const SESSION_LENGTHS = [30, 45, 60, 75, 90];
@@ -16,6 +16,8 @@ export default function ProfileScreen() {
   const [experience, setExperience] = useState<Experience | null>(null);
   const [days, setDays] = useState<number[]>([]);
   const [minutes, setMinutes] = useState(60);
+  const [split, setSplit] = useState<TrainingSplit>('auto');
+  const [splitNotes, setSplitNotes] = useState('');
   const [injuries, setInjuries] = useState('');
   const [units, setUnits] = useState<'kg' | 'lb'>('kg');
   const [restThreshold, setRestThreshold] = useState(30);
@@ -30,6 +32,8 @@ export default function ProfileScreen() {
     setExperience(profile.experience);
     setDays(profile.training_days ?? []);
     setMinutes(profile.session_minutes ?? 60);
+    setSplit(profile.training_split ?? 'auto');
+    setSplitNotes(profile.split_notes ?? '');
     setInjuries(profile.injuries ?? '');
     setUnits(profile.units);
     setRestThreshold(profile.rest_threshold);
@@ -49,6 +53,8 @@ export default function ProfileScreen() {
         training_days: days,
         days_per_week: days.length || null,
         session_minutes: minutes,
+        training_split: split,
+        split_notes: split === 'custom' ? splitNotes.trim() || null : null,
         injuries: injuries.trim() || null,
         units,
         rest_threshold: restThreshold,
@@ -95,6 +101,21 @@ export default function ProfileScreen() {
           <Chip key={m} label={`${m} min`} selected={minutes === m} onPress={() => setMinutes(m)} />
         ))}
       </View>
+
+      <Label>Training split</Label>
+      <View style={styles.row}>
+        {SPLITS.map((sp) => (
+          <Chip key={sp.value} label={sp.label} selected={split === sp.value} onPress={() => setSplit(sp.value)} />
+        ))}
+      </View>
+      {split === 'custom' && (
+        <Input
+          value={splitNotes}
+          onChangeText={setSplitNotes}
+          placeholder="Describe your split, e.g. Chest/Back, Legs, Shoulders/Arms"
+          multiline
+        />
+      )}
 
       <Label>Injuries or limits</Label>
       <Input value={injuries} onChangeText={setInjuries} placeholder="None" multiline />

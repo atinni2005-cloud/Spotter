@@ -5,7 +5,7 @@ An AI fitness coach for people who train in the gym. Built with Expo (React Nati
 ## What's in stage one
 
 - **Accounts**: email + password sign-up and sign-in (Supabase Auth).
-- **Onboarding**: goal (lose fat, build muscle, get stronger, general fitness), experience, training days, session length, injuries.
+- **Onboarding**: goal (lose fat, build muscle, get stronger, general fitness), experience, training days, session length, training split (PPL, upper/lower, full body, bro split, Arnold, custom, or let the coach choose), injuries.
 - **AI coach chat**: replies stream in word by word. The coach knows your profile, today's energy and your current plan, and can build a new week for you from the chat.
 - **Weekly plan**: generated from your goal, schedule and today's energy. Every day is editable: rename it, make it a rest day, add, remove, reorder and change exercises, sets, reps and rest.
 - **Energy check-in**: five quick questions give an energy %. Low energy lightens today's session; below your rest threshold (30% by default, changeable in Profile) the coach suggests a rest day.
@@ -30,7 +30,7 @@ You need: a free [Supabase](https://supabase.com) project, an [Anthropic API key
 
 ### 1. Database
 
-In the Supabase dashboard, open **SQL Editor**, paste the whole of `supabase/migrations/20261109000000_stage_one.sql`, and run it.
+In the Supabase dashboard, open **SQL Editor** and run each file in `supabase/migrations/` in order (oldest first): paste the whole file, click **Run**.
 
 For easier testing, turn off email confirmation: **Authentication → Sign In / Providers → Email → Confirm email** (off). Turn it back on before launch.
 

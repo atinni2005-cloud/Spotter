@@ -3,11 +3,11 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Button, Chip, Choice, ErrorText, Input, Label, Screen, Subtitle, Title } from '../components/ui';
 import { supabase } from '../lib/supabase';
 import { colors, space } from '../lib/theme';
-import { DAY_SHORT, EXPERIENCE, type Experience, type Goal, GOALS } from '../lib/types';
+import { DAY_SHORT, EXPERIENCE, type Experience, type Goal, GOALS, SPLITS, type TrainingSplit } from '../lib/types';
 import { useAuth } from '../providers/AuthProvider';
 
 const SESSION_LENGTHS = [30, 45, 60, 75, 90];
-const STEPS = 4;
+const STEPS = 5;
 
 export default function Onboarding() {
   const { session, profile, refreshProfile } = useAuth();
@@ -16,13 +16,19 @@ export default function Onboarding() {
   const [experience, setExperience] = useState<Experience | null>(profile?.experience ?? null);
   const [days, setDays] = useState<number[]>(profile?.training_days?.length ? profile.training_days : [0, 2, 4]);
   const [minutes, setMinutes] = useState<number>(profile?.session_minutes ?? 60);
+  const [split, setSplit] = useState<TrainingSplit>(profile?.training_split ?? 'auto');
+  const [splitNotes, setSplitNotes] = useState(profile?.split_notes ?? '');
   const [name, setName] = useState(profile?.display_name ?? '');
   const [injuries, setInjuries] = useState(profile?.injuries ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const canContinue =
-    (step === 0 && goal) || (step === 1 && experience) || (step === 2 && days.length > 0) || step === 3;
+    (step === 0 && goal) ||
+    (step === 1 && experience) ||
+    (step === 2 && days.length > 0) ||
+    (step === 3 && (split !== 'custom' || splitNotes.trim().length > 0)) ||
+    step === 4;
 
   function toggleDay(i: number) {
     setDays((d) => (d.includes(i) ? d.filter((x) => x !== i) : [...d, i].sort()));
@@ -42,6 +48,8 @@ export default function Onboarding() {
         training_days: days,
         days_per_week: days.length,
         session_minutes: minutes,
+        training_split: split,
+        split_notes: split === 'custom' ? splitNotes.trim() : null,
         injuries: injuries.trim() || null,
         timezone,
         onboarded_at: new Date().toISOString(),
@@ -110,6 +118,31 @@ export default function Onboarding() {
       )}
 
       {step === 3 && (
+        <>
+          <Title>What split do you run?</Title>
+          <Subtitle>Your plans will follow this. Not sure? Let your coach choose.</Subtitle>
+          {SPLITS.map((sp) => (
+            <Choice
+              key={sp.value}
+              label={sp.label}
+              blurb={sp.blurb}
+              selected={split === sp.value}
+              onPress={() => setSplit(sp.value)}
+            />
+          ))}
+          {split === 'custom' && (
+            <Input
+              placeholder="e.g. Chest/Back, Legs, Shoulders/Arms, repeat"
+              value={splitNotes}
+              onChangeText={setSplitNotes}
+              multiline
+              autoFocus
+            />
+          )}
+        </>
+      )}
+
+      {step === 4 && (
         <>
           <Title>Almost done</Title>
           <Subtitle>A couple of details so your coach can look after you.</Subtitle>

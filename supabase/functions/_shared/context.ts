@@ -12,6 +12,8 @@ export type Profile = {
   units: "kg" | "lb";
   rest_threshold: number;
   timezone: string;
+  training_split: string;
+  split_notes: string | null;
 };
 
 export type Energy = { score: number; created_at: string } | null;
@@ -22,6 +24,23 @@ export const GOAL_LABEL: Record<string, string> = {
   get_stronger: "get stronger",
   general_fitness: "general fitness",
 };
+
+export const SPLIT_LABEL: Record<string, string> = {
+  auto: "no preference (coach chooses the best split for their goal and schedule)",
+  full_body: "full body every session",
+  upper_lower: "upper / lower",
+  push_pull_legs: "push / pull / legs",
+  bro_split: "bro split (one main muscle group per day: e.g. chest, back, shoulders, legs, arms)",
+  arnold: "Arnold split (chest + back / shoulders + arms / legs)",
+  custom: "custom",
+};
+
+export function describeSplit(p: Profile): string {
+  if (p.training_split === "custom") {
+    return p.split_notes?.trim() ? `custom: ${p.split_notes.trim()}` : "custom (not described)";
+  }
+  return SPLIT_LABEL[p.training_split] ?? SPLIT_LABEL.auto;
+}
 
 export const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -98,6 +117,7 @@ export function describeProfile(p: Profile): string {
     `Experience: ${p.experience ?? "not set"}`,
     `Training days per week: ${p.days_per_week ?? "not set"} (preferred days: ${days})`,
     `Session length: ${p.session_minutes ?? "not set"} minutes`,
+    `Preferred training split: ${describeSplit(p)}`,
     `Injuries or limits: ${p.injuries?.trim() || "none reported"}`,
     `Units: ${p.units}`,
     `Rest threshold: suggest rest when energy is below ${p.rest_threshold}%`,

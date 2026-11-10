@@ -36,7 +36,7 @@ export default function CheckIn() {
 
   return (
     <Screen scroll edges={['bottom']}>
-      <Text style={styles.intro}>Five quick questions. Your coach uses this to lighten or adjust today's training.</Text>
+      <Text style={styles.intro}>Six quick questions. Your coach uses this to lighten or adjust today's training.</Text>
       {ENERGY_QUESTIONS.map((q) => (
         <View key={q.id} style={{ gap: space.sm, marginBottom: space.md }}>
           <Text style={styles.question}>{q.question}</Text>

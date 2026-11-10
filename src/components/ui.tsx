@@ -141,6 +141,36 @@ export function Card({ children, style }: { children: ReactNode; style?: ViewSty
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
+/** A labelled progress bar, e.g. "Protein 82 / 160 g". Turns amber when over the target. */
+export function ProgressBar({
+  label,
+  value,
+  target,
+  unit,
+}: {
+  label: string;
+  value: number;
+  target: number | null;
+  unit: string;
+}) {
+  const pct = target ? Math.min(1, value / target) : 0;
+  const over = target ? value > target * 1.1 : false;
+  return (
+    <View style={{ gap: 6 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        <Text style={styles.barLabel}>{label}</Text>
+        <Text style={styles.barValue}>
+          {Math.round(value)}
+          {target ? ` / ${target}` : ''} {unit}
+        </Text>
+      </View>
+      <View style={styles.barTrack}>
+        <View style={[styles.barFill, { width: `${pct * 100}%` }, over && { backgroundColor: colors.warn }]} />
+      </View>
+    </View>
+  );
+}
+
 export function ErrorText({ children }: { children: ReactNode }) {
   if (!children) return null;
   return <Text style={styles.error}>{children}</Text>;
@@ -203,4 +233,8 @@ const styles = StyleSheet.create({
     padding: space.lg,
   },
   error: { color: colors.danger, fontSize: 14 },
+  barLabel: { color: colors.text, fontSize: 15, fontWeight: '700' },
+  barValue: { color: colors.muted, fontSize: 15, fontVariant: ['tabular-nums'] },
+  barTrack: { height: 8, borderRadius: radius.pill, backgroundColor: colors.cardAlt, overflow: 'hidden' },
+  barFill: { height: 8, borderRadius: radius.pill, backgroundColor: colors.accent },
 });

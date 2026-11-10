@@ -72,3 +72,78 @@ export async function generatePlan(notes?: string): Promise<{ planId: string; ti
   if (!res.ok) throw new Error(await errorMessage(res));
   return res.json();
 }
+
+async function post<T>(fn: string, body: unknown): Promise<T> {
+  const res = await fetch(`${functionsUrl}/${fn}`, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+export type MealEstimate = {
+  name: string;
+  items: { name: string; portion: string; calories: number; protein_g: number; carbs_g: number; fat_g: number }[];
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  confidence: number;
+  note: string;
+};
+
+/** Estimate calories and macros from a food photo (base64 JPEG) and/or a description. */
+export function analyzeMeal(input: { imageBase64?: string; description?: string }): Promise<MealEstimate> {
+  return post('nutrition', { action: 'analyze', image_base64: input.imageBase64, description: input.description });
+}
+
+export type MealIdea = {
+  title: string;
+  description: string;
+  calories: number;
+  protein_g: number;
+  ingredients: { name: string; amount: string }[];
+};
+
+export type MealSuggestion = {
+  remaining: { calories: number | null; protein_g: number | null };
+  /** How far over each target the user already is today (0 when not over). */
+  over?: { calories: number; protein_g: number; carbs_g: number; fat_g: number };
+  met: boolean;
+  suggestion: MealIdea | null;
+};
+
+/** A meal idea that fills today's gap to the user's targets (null when targets are met). */
+export function suggestMeal(): Promise<MealSuggestion> {
+  return post('nutrition', { action: 'suggest' });
+}
+
+/** Swap the ingredients the user doesn't have for equivalents with similar macros. */
+export function swapMealIngredients(
+  meal: MealIdea,
+  missing: string[],
+  note?: string,
+): Promise<{ suggestion: MealIdea; swaps: { from: string; to: string }[] }> {
+  return post('nutrition', { action: 'swap', meal, missing, note: note ?? '' });
+}
+
+/** Start the background form review. Returns the form check id to watch. */
+export function startFormCheck(input: {
+  exerciseName: string;
+  videoPath: string;
+  frames: { t: number; data: string }[];
+  durationS?: number;
+  setLogId?: string | null;
+  notes?: string;
+}): Promise<{ id: string }> {
+  return post('form-check', {
+    exercise_name: input.exerciseName,
+    video_path: input.videoPath,
+    frames: input.frames,
+    duration_s: input.durationS,
+    set_log_id: input.setLogId ?? null,
+    notes: input.notes ?? '',
+  });
+}

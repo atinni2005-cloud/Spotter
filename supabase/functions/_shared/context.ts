@@ -15,6 +15,11 @@ export type Profile = {
   training_split: string;
   split_notes: string | null;
   exercises_per_session: number | null;
+  calorie_target: number | null;
+  protein_target_g: number | null;
+  carbs_target_g: number | null;
+  fat_target_g: number | null;
+  meal_reminder_time: string | null;
 };
 
 export type Energy = { score: number; created_at: string } | null;
@@ -57,6 +62,22 @@ export function today(timezone: string): { date: string; dayIndex: number } {
   const weekday = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" }).format(new Date());
   const dayIndex = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].indexOf(weekday);
   return { date, dayIndex };
+}
+
+/** The UTC instant of midnight today in the user's timezone. */
+export function startOfToday(timezone: string): Date {
+  let tz = timezone;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+  } catch {
+    tz = "UTC";
+  }
+  const now = new Date();
+  const local = new Date(now.toLocaleString("en-US", { timeZone: tz }));
+  const utc = new Date(now.toLocaleString("en-US", { timeZone: "UTC" }));
+  const offsetMs = local.getTime() - utc.getTime();
+  const { date } = today(tz);
+  return new Date(new Date(`${date}T00:00:00Z`).getTime() - offsetMs);
 }
 
 /** Monday of the current week in the user's timezone. */
@@ -145,4 +166,100 @@ export function energyGuidance(energy: Energy, restThreshold: number): string {
     return `Today's energy is ${s}% (moderate). Train as planned but keep the hardest sets around RPE 7-8.`;
   }
   return `Today's energy is ${s}% (good). Train as planned.`;
+}
+
+export type DayNutrition = {
+  meals: { name: string | null; calories: number; protein_g: number; eaten_at: string }[];
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+};
+
+/** Everything the user logged since midnight in their timezone. */
+export async function loadTodayNutrition(supabase: SupabaseClient, timezone: string): Promise<DayNutrition> {
+  const { data } = await supabase
+    .from("meal_logs")
+    .select("name, description, calories, protein_g, carbs_g, fat_g, eaten_at")
+    .gte("eaten_at", startOfToday(timezone).toISOString())
+    .order("eaten_at", { ascending: true });
+  const rows = data ?? [];
+  const sum = (k: "calories" | "protein_g" | "carbs_g" | "fat_g") =>
+    Math.round(rows.reduce((t, r) => t + (Number(r[k]) || 0), 0));
+  return {
+    meals: rows.map((r) => ({
+      name: r.name ?? r.description ?? null,
+      calories: Number(r.calories) || 0,
+      protein_g: Number(r.protein_g) || 0,
+      eaten_at: r.eaten_at,
+    })),
+    calories: sum("calories"),
+    protein_g: sum("protein_g"),
+    carbs_g: sum("carbs_g"),
+    fat_g: sum("fat_g"),
+  };
+}
+
+export function describeNutrition(p: Profile, n: DayNutrition): string {
+  const target = (have: number, goal: number | null, unit: string) =>
+    !goal
+      ? `${have}${unit} (no target set)`
+      : have > goal
+        ? `${have}${unit} of ${goal}${unit} (OVER by ${have - goal}${unit})`
+        : `${have}${unit} of ${goal}${unit} (${goal - have}${unit} left)`;
+  const meals = n.meals.length
+    ? n.meals.map((m) => `- ${m.name ?? "Meal"}: ${m.calories} kcal, ${Math.round(m.protein_g)} g protein`).join("\n")
+    : "- nothing logged yet";
+  return [
+    `Calories: ${target(n.calories, p.calorie_target, " kcal")}`,
+    `Protein: ${target(n.protein_g, p.protein_target_g, " g")}`,
+    `Carbs: ${target(n.carbs_g, p.carbs_target_g, " g")}`,
+    `Fat: ${target(n.fat_g, p.fat_target_g, " g")}`,
+    "Meals today:",
+    meals,
+  ].join("\n");
+}
+
+/** The last few logged workouts, with the best set per exercise. */
+export async function describeRecentWorkouts(supabase: SupabaseClient): Promise<string | null> {
+  const { data } = await supabase
+    .from("workout_sessions")
+    .select("started_at, finished_at, adjusted, set_logs(exercise_name, set_number, reps, weight)")
+    .order("started_at", { ascending: false })
+    .limit(3);
+  if (!data?.length) return null;
+  return data
+    .map((s) => {
+      // deno-lint-ignore no-explicit-any
+      const sets = (s as any).set_logs as { exercise_name: string; reps: number | null; weight: number | null }[];
+      const byExercise = new Map<string, string[]>();
+      for (const set of sets ?? []) {
+        const list = byExercise.get(set.exercise_name) ?? [];
+        list.push(`${set.reps ?? "?"}x${set.weight ?? "BW"}`);
+        byExercise.set(set.exercise_name, list);
+      }
+      const detail = [...byExercise.entries()].map(([name, list]) => `${name}: ${list.join(", ")}`).join("; ");
+      const day = s.started_at.slice(0, 10);
+      return `- ${day}${s.adjusted ? " (lightened for low energy)" : ""}: ${detail || "no sets logged"}`;
+    })
+    .join("\n");
+}
+
+/** Most recent form check results. */
+export async function describeRecentFormChecks(supabase: SupabaseClient): Promise<string | null> {
+  const { data } = await supabase
+    .from("form_checks")
+    .select("exercise_name, status, feedback, created_at")
+    .eq("status", "done")
+    .order("created_at", { ascending: false })
+    .limit(3);
+  if (!data?.length) return null;
+  return data
+    .map((f) => {
+      // deno-lint-ignore no-explicit-any
+      const fb = (f.feedback ?? {}) as any;
+      const fixes = Array.isArray(fb.fixes) ? fb.fixes.map((x: { issue: string }) => x.issue).join("; ") : "";
+      return `- ${f.created_at.slice(0, 10)} ${f.exercise_name}: ${fb.headline ?? ""}${fixes ? ` Fixes: ${fixes}` : ""}`;
+    })
+    .join("\n");
 }

@@ -39,6 +39,12 @@ function RootNavigator() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="check-in" options={{ presentation: 'modal', title: 'Energy check-in' }} />
         <Stack.Screen name="plan/[dayId]" options={{ title: 'Edit day' }} />
+        <Stack.Screen name="workout/[dayId]" options={{ title: 'Workout' }} />
+        <Stack.Screen name="meal/new" options={{ presentation: 'modal', title: 'Log a meal' }} />
+        <Stack.Screen name="nutrition-settings" options={{ title: 'Targets & reminder' }} />
+        <Stack.Screen name="form-check/new" options={{ title: 'Form check' }} />
+        <Stack.Screen name="form-check/[id]" options={{ title: 'Form feedback' }} />
+        <Stack.Screen name="form-checks" options={{ title: 'Form checks' }} />
       </Stack.Protected>
     </Stack>
   );

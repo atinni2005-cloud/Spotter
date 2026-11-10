@@ -9,3 +9,9 @@ verify_jwt = false
 
 [functions.generate-plan]
 verify_jwt = false
+
+[functions.nutrition]
+verify_jwt = false
+
+[functions.form-check]
+verify_jwt = false

@@ -25,7 +25,16 @@
     },
     "scheme": "spotter",
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Spotter uses your photos to log meals and check your exercise form.",
+          "cameraPermission": "Spotter uses the camera to photograph meals and film your sets for form feedback.",
+          "microphonePermission": "Spotter records audio with your exercise videos."
+        }
+      ],
+      "expo-notifications"
     ]
   }
 }

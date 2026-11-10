@@ -11,13 +11,24 @@ export type EnergyQuestion = {
 export const ENERGY_QUESTIONS: EnergyQuestion[] = [
   {
     id: 'sleep',
-    question: 'How did you sleep last night?',
-    weight: 0.3,
+    question: 'How many hours did you sleep last night?',
+    weight: 0.25,
     options: [
-      { label: 'Badly (under 5h)', score: 10 },
-      { label: 'Not great (5-6h)', score: 40 },
-      { label: 'OK (6-7h)', score: 70 },
-      { label: 'Great (7h+)', score: 100 },
+      { label: 'Under 5h', score: 10 },
+      { label: '5-6h', score: 40 },
+      { label: '6-7h', score: 70 },
+      { label: '7h or more', score: 100 },
+    ],
+  },
+  {
+    id: 'sleep_quality',
+    question: 'How do you feel after that sleep?',
+    weight: 0.15,
+    options: [
+      { label: 'Exhausted', score: 10 },
+      { label: 'Groggy', score: 45 },
+      { label: 'Fine', score: 75 },
+      { label: 'Refreshed', score: 100 },
     ],
   },
   {

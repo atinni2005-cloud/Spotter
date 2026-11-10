@@ -88,7 +88,7 @@ export default function Plan() {
         </View>
         <Text style={styles.muted}>
           {energy === null
-            ? 'Answer 5 quick questions so your coach can adjust today.'
+            ? 'Answer 6 quick questions so your coach can adjust today.'
             : energyAdvice(energy, restThreshold)}
         </Text>
       </Card>
@@ -112,6 +112,7 @@ export default function Plan() {
           {days.map((day) => (
             <DayCard key={day.id} day={day} isToday={day.day_index === today} />
           ))}
+          <Button title="🎥  Form checks" variant="secondary" onPress={() => router.push('/form-checks')} />
           <Button title="Build a new week" variant="secondary" onPress={confirmRegenerate} loading={generating} />
         </>
       )}
@@ -135,7 +136,8 @@ function DayCard({ day, isToday }: { day: PlanDay; isToday: boolean }) {
         {day.is_rest ? (
           <Text style={styles.muted}>{day.notes || 'Rest and recover.'}</Text>
         ) : (
-          exercises.map((e) => (
+          <>
+          {exercises.map((e) => (
             <View key={e.id} style={styles.exerciseRow}>
               <Text style={styles.exerciseName} numberOfLines={1}>
                 {e.name}
@@ -152,7 +154,14 @@ function DayCard({ day, isToday }: { day: PlanDay; isToday: boolean }) {
                 <Text style={styles.watch}>▶ Watch</Text>
               </Pressable>
             </View>
-          ))
+          ))}
+          <Button
+            title={isToday ? 'Start workout' : 'Log this workout'}
+            variant={isToday ? 'primary' : 'secondary'}
+            onPress={() => router.push({ pathname: '/workout/[dayId]', params: { dayId: day.id } })}
+            style={{ marginTop: space.md }}
+          />
+          </>
         )}
       </Card>
     </Pressable>

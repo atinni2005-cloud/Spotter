@@ -26,6 +26,60 @@ export type Profile = {
   split_notes: string | null;
   exercises_per_session: number | null;
   onboarded_at: string | null;
+  sex: 'male' | 'female' | null;
+  birth_year: number | null;
+  height_cm: number | null;
+  weight_kg: number | null;
+  calorie_target: number | null;
+  protein_target_g: number | null;
+  carbs_target_g: number | null;
+  fat_target_g: number | null;
+  /** "HH:MM:SS" or null when reminders are off. */
+  meal_reminder_time: string | null;
+};
+
+export type MealLog = {
+  id: string;
+  name: string | null;
+  description: string | null;
+  eaten_at: string;
+  calories: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+  confidence: number | null;
+  source: 'photo' | 'text' | 'manual';
+};
+
+export type SetLog = {
+  id: string;
+  session_id: string;
+  exercise_id: string | null;
+  exercise_name: string;
+  set_number: number;
+  reps: number | null;
+  weight: number | null;
+  created_at: string;
+};
+
+export type FormFeedback = {
+  verdict: 'good' | 'minor_fixes' | 'needs_work' | 'unclear';
+  headline: string;
+  rep_count: number;
+  went_well: string[];
+  fixes: { issue: string; why: string; cue: string }[];
+  safety: string;
+  next_set: string;
+  camera_tip: string;
+  error?: string;
+};
+
+export type FormCheck = {
+  id: string;
+  exercise_name: string;
+  status: 'uploaded' | 'processing' | 'done' | 'failed';
+  feedback: FormFeedback | null;
+  created_at: string;
 };
 
 export type PlanExercise = {

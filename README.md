@@ -10,7 +10,17 @@ An AI fitness coach for people who train in the gym. Built with Expo (React Nati
 - **Weekly plan**: generated from your goal, split, schedule and today's energy. Each exercise has a "Watch" link to a form demo video. Every day is editable: rename it, make it a rest day, add, remove, reorder and change exercises, sets, reps and rest.
 - **Energy check-in**: five quick questions give an energy %. Low energy lightens today's session; below your rest threshold (30% by default, changeable in Profile) the coach suggests a rest day.
 
-The database already has tables for later stages (workout logging, form-check videos, meal photos and macro targets), so those can be added without reshaping the data.
+## What's in stage two
+
+- **Food photo macros** (Eat tab): snap or choose a photo, or type what you ate. Claude estimates calories, protein, carbs and fat per item; you can fix any number before saving.
+- **Daily targets**: add sex, birth year, height and weight and Spotter works out calories and protein from your goal and training days (all editable).
+- **Meal reminder**: pick a time. If you're short on protein or calories then, you get a notification with a meal that fills the gap. Reminders are local notifications, so they work in Expo Go.
+- **Workout logging**: start a day from the Plan tab, log weight and reps per set, see what you did last time, and get a "go heavier" hint once you hit the top of the rep range. Low energy lightens the number of sets.
+- **Form check**: film your first set (or pick a video). The app uploads it and sends still frames to Claude; feedback (what went well, up to 3 fixes with cues, safety notes, what to do next set) arrives about a minute later.
+- **Coach**: now also knows today's food vs targets, your recent workouts and your latest form feedback.
+- **Energy check-in**: a separate question for sleep hours and how rested you feel.
+
+Not yet: reading sleep from Apple Health or a watch. That needs a development build of the app (not Expo Go) and an Apple developer account, so it's a separate step.
 
 ## How it fits together
 
@@ -20,6 +30,8 @@ Expo app (src/)  ──►  Supabase Auth + Postgres (row-level security: users 
        └──────────►  Supabase Edge Functions (supabase/functions/)
                         coach          streams chat replies, can create a plan
                         generate-plan  builds a plan from the Plan tab
+                        nutrition      food photo estimates + meal suggestions
+                        form-check     reviews frames from a set video (in the background)
                               │
                               └──►  Claude API (key stored as a Supabase secret, never in the app)
 ```
@@ -44,6 +56,8 @@ npx supabase link --project-ref YOUR-PROJECT-REF      # the part before .supabas
 npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...  # your Anthropic key
 npx supabase functions deploy coach --use-api
 npx supabase functions deploy generate-plan --use-api
+npx supabase functions deploy nutrition --use-api
+npx supabase functions deploy form-check --use-api
 ```
 
 The coach uses `claude-opus-5-5` by default. To use a different Claude model: `npx supabase secrets set ANTHROPIC_MODEL=<model id>`.
@@ -66,8 +80,15 @@ src/app/                 screens (Expo Router: every file is a route)
   onboarding.tsx         4-step onboarding
   (tabs)/index.tsx       coach chat
   (tabs)/plan.tsx        energy card + weekly plan
+  (tabs)/eat.tsx         today's food vs targets, meal ideas
   (tabs)/profile.tsx     settings, rest threshold, sign out
   plan/[dayId].tsx       edit one day of the plan
+  workout/[dayId].tsx    log a workout set by set
+  meal/new.tsx           photo / text meal logging
+  nutrition-settings.tsx body stats, targets, meal reminder time
+  form-check/new.tsx     film and send a set
+  form-check/[id].tsx    form feedback
+  form-checks.tsx        form check history
   check-in.tsx           energy check-in
 src/lib/                 Supabase client, API calls, energy scoring, types, theme
 src/providers/           auth/session state

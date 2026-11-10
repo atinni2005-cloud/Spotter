@@ -14,10 +14,14 @@ import { anthropic, FALLBACK, MODEL } from "../_shared/claude.ts";
 import {
   DAY_NAMES,
   describeActivePlan,
+  describeNutrition,
   describeProfile,
+  describeRecentFormChecks,
+  describeRecentWorkouts,
   energyGuidance,
   loadProfile,
   loadRecentEnergy,
+  loadTodayNutrition,
   today,
 } from "../_shared/context.ts";
 import { corsHeaders, json } from "../_shared/cors.ts";
@@ -35,6 +39,8 @@ How you coach:
 - Give specific numbers (sets, reps, rest, RPE) when it helps.
 - Respect injuries and limits. For pain, injury or medical questions, give general guidance and recommend a qualified professional.
 - You are not a doctor or dietitian; do not diagnose.
+- You can see what they ate today versus their calorie and protein targets, their recent logged workouts and their latest form check feedback. Use them: suggest food that fills today's protein gap, recommend going heavier when they hit the top of their rep range, and remind them of form cues from their checks.
+- Food is logged by photo on the Eat tab. Form checks are filmed from the workout screen (tap "Check form" on an exercise).
 
 Weekly plans:
 - When the user asks for a new plan, a plan change that needs a new week, or has no plan yet and wants one, call create_weekly_plan.
@@ -84,10 +90,13 @@ Deno.serve(async (req) => {
   if (message.length > 4000) return json({ error: "Message is too long" }, 400);
 
   // Load context before streaming so setup errors return a normal HTTP error.
-  const [profile, energy, planText, historyRes] = await Promise.all([
-    loadProfile(supabase, user.id),
+  const profile = await loadProfile(supabase, user.id);
+  const [energy, planText, nutrition, workoutsText, formText, historyRes] = await Promise.all([
     loadRecentEnergy(supabase),
     describeActivePlan(supabase),
+    loadTodayNutrition(supabase, profile.timezone),
+    describeRecentWorkouts(supabase),
+    describeRecentFormChecks(supabase),
     supabase
       .from("chat_messages")
       .select("role, content")
@@ -116,6 +125,9 @@ Deno.serve(async (req) => {
     "</user_profile>",
     `<today>${DAY_NAMES[dayIndex]}. ${energyGuidance(energy, profile.rest_threshold)}</today>`,
     `<current_plan>${planText ?? "No plan yet."}</current_plan>`,
+    `<food_today>\n${describeNutrition(profile, nutrition)}\n</food_today>`,
+    `<recent_workouts>\n${workoutsText ?? "No workouts logged yet."}\n</recent_workouts>`,
+    `<recent_form_checks>\n${formText ?? "No form checks yet."}\n</recent_form_checks>`,
   ].join("\n");
 
   const encoder = new TextEncoder();
